@@ -9,7 +9,7 @@ import json
 import time
 
 output_path = "tmp/output/"
-cmd = ["python3", "-m", "maskbench.runner", "--multi"]
+cmd = ["python", "-m", "maskbench.runner"]
 log_lock = Lock()
 
 
