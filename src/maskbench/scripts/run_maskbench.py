@@ -129,7 +129,7 @@ def main():
 
     from src.maskbench.src.runner import setup_argparse, get_output, get_files, get_engine
 
-    cmd = ["python3", "-m", "maskbench.runner", "--multi"]
+    cmd = ["python", "-m", "maskbench.runner"]
     parser = setup_argparse()
     args = parser.parse_args()
 
