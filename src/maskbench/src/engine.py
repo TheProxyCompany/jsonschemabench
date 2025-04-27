@@ -1,4 +1,4 @@
-from transformers import PreTrainedTokenizer
+from transformers.tokenization_utils import PreTrainedTokenizer
 
 
 class Engine:

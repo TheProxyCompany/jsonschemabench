@@ -1,4 +1,4 @@
-from transformers import PreTrainedTokenizer, AutoConfig
+from transformers.models.auto.configuration_auto import AutoConfig
 from .engine import Engine
 import json
 import xgrammar as xgr

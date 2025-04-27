@@ -1,17 +1,9 @@
-# MaskBench
 
-<p align="center">
-    <img src="plots/hero.png" width="700"/>
-</p>
 
-The primary focus of the top-level repository is end-to-end performance and accuracy of JSON Schema-constrained generation.
-See [paper](https://arxiv.org/abs/2501.10868) for general methodology, description of data and results.
-
-This folder, however, contains scripts and results dedicated to benchmarking mask computation in isolation, without involving an LLM.
-By isolating mask computation, this benchmark assesses its standalone performance, which is particularly relevant for server-side scenarios with large batch sizes.
 
 ## News
 
+- **2025-04-27**: added Proxy Structuring Engine (PSE) and reorganized repository to be more maintainable
 - **2025-03-27**: re-run tests with latest versions of engines; fairer timeout accounting
 - **2025-03-26**: added testcases from [NousResearch/json-mode-eval](https://huggingface.co/datasets/NousResearch/json-mode-eval)
 - **2025-03-26**: added (quite easy) testcases from [Gorilla BFCL v3](https://github.com/ShishirPatil/gorilla/tree/main/berkeley-function-call-leaderboard/data) using [improved](./creation/fetch_bfcl.py) version of script by @zanderjiang
@@ -19,20 +11,6 @@ By isolating mask computation, this benchmark assesses its standalone performanc
 - **2025-02-17**: re-run tests with latest versions of engines
 - **2025-01-20**: initial release of the benchmark
 
-## Data Overview
-
-- **Data Folder (`data/`)**: Contains ~10k schemas, with 13k valid and 23k invalid instances (total: ~2M tokens). About 1.5k schemas lack tests.  
-- **Schema Instances**: Each schema includes valid and invalid examples for benchmarking and correctness testing. See [Testcases](#testcases) for details on data generation and stats on the testcases.
-
-## Benchmark Results
-
-<p align="center">
-    <img src="plots/tbm.png" />
-</p>
-
-<p align="center">
-    <img src="plots/ttfm.png" />
-</p>
 
 ## Engines Benchmarked
 
@@ -44,11 +22,12 @@ By isolating mask computation, this benchmark assesses its standalone performanc
 3. **[XGrammar](https://github.com/mlc-ai/xgrammar)** in default configuration.
 4. **"XGrammar.cpp"**: XGrammar with the llama.cpp script above.
 5. **[Outlines Core](https://github.com/dottxt-ai/outlines-core)**
+6. **[Proxy Structuring Engine (PSE)](https://github.com/TheProxyCompany/pse)**
 
 ## Test Environment
 
 - **Hardware**: Azure [NC96ads_A100_v4](https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/gpu-accelerated/nca100v4-series?tabs=sizebasic) with 96 threads (48 cores), 880 GiB RAM, 4x A100 GPUs (GPUs not utilized).
-- **Constraints**: 
+- **Constraints**:
   - Time: 15 minutes per schema.
   - Memory: 40 GiB resident set size.
   - Threads: 40-thread limit.
@@ -156,12 +135,12 @@ Note that an engine that only supports "easy" schemas may have artificially good
 
 ## Reproducing Results
 
-- **Run Masks**: Use `scripts/run_maskbench.py`. Example:  
-  `./scripts/run_maskbench.py --xgr-compliant data/`  
+- **Run Masks**: Use `scripts/run_maskbench.py`. Example:
+  `./scripts/run_maskbench.py --xgr-compliant data/`
   Results are saved in `tmp/out--xgr-compliant`.
   See `./scripts/run_maskbench.py --help` for more options, in particular resource limits.
-  
-- **Analyze Results**: Generate tables and plots with  
+
+- **Analyze Results**: Generate tables and plots with
   `./scripts/maskbench_results.py`.
 
 
