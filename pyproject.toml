@@ -28,6 +28,3 @@ dependencies = [
     "dacite",
     "google-generativeai"
 ]
-
-[tool.setuptools.packages.find]
-where = ["src"]

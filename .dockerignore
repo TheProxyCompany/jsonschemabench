@@ -1,0 +1,32 @@
+# .dockerignore
+
+# Git
+.git/
+.gitignore
+
+# Python
+.venv/
+*.pyc
+__pycache__/
+*.egg-info/
+pip-wheel-metadata/
+.pytest_cache/
+.mypy_cache/
+
+# Docker
+Dockerfile
+.dockerignore
+
+# IDE / OS specific
+.vscode/
+.idea/
+*.DS_Store
+*.egg-info/
+
+# Build artifacts / Temp files
+build/
+dist/
+*.log
+tmp/
+img/
+data/
