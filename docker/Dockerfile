@@ -28,10 +28,9 @@ ENV CC=gcc CXX=g++
 # ---------------------------------------------------------------------------
 
 # Create and set the path for the virtual environment using uv
-ENV VENV_PATH="/app/.venv"
-RUN uv venv --python 3.12 $VENV_PATH
+RUN uv venv --python 3.12
 RUN uv cache clean
-ENV PATH="${VENV_PATH}/bin:${PATH}"
+ENV PATH="/app/.venv/bin:$PATH"
 
 ARG TARGETARCH
 ARG TARGETOS
@@ -70,10 +69,15 @@ RUN --mount=type=ssh \
 # Copy dependency definition file and install project dependencies
 COPY pyproject.toml ./
 
-RUN uv pip install --no-cache-dir .
+RUN uv pip install --no-cache-dir -e .
 
 # Copy the rest of the application code
 COPY . .
 
-# Set the default command to start an interactive bash shell
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
+
+# Default command to start an interactive bash shell
 CMD ["/bin/bash"]
