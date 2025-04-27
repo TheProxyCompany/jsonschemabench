@@ -1,0 +1,6 @@
+model_engine_config:
+  model: "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF"
+  filename: "*Q8_0.gguf"
+  temperature: 0.0
+hf_tokenizer_id: "meta-llama/Llama-3.1-8B-Instruct"
+max_tokens: 2048
