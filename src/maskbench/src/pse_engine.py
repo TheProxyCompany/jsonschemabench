@@ -21,15 +21,13 @@ class PSEEngine(Engine):
         return "pse"
 
     def compile_grammar(self, schema: dict):
-        breakpoint()
         self.pse.configure(schema)
 
     def reset(self):
         self.pse.reset()
 
     def compute_mask(self):
-        # _ = self.pse.compute_token_mask(self.vocab_size)
-        pass
+        _ = self.pse.compute_token_mask(self.vocab_size)
 
     def commit_token(self, t: int) -> bool:
         self.pse.consume(t, token_healing=False)
