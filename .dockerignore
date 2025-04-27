@@ -30,4 +30,6 @@ dist/
 tmp/
 img/
 data/
-docker/
+
+[tool.setuptools.packages.find]
+where = ["src"]
