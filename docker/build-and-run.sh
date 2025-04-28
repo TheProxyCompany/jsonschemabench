@@ -63,6 +63,7 @@ DOCKER_BUILDKIT=1 \
 docker build \
     --build-arg INSTALL_DEV_BRANCH=$SSH_ENABLED \
     --ssh default \
+    --build-arg CACHEBUST=$(date +%s) \
     -t maskbench-env:private-latest \
     -f docker/Dockerfile .
 echo "--- Docker image build complete"
@@ -124,8 +125,6 @@ if [[ ! "$DATASET" == data/* ]]; then
     DATASET="data/$DATASET"
 fi
 
-# --- Run the Docker container ---
-echo "--- Running container interactively"
 HOST_DATA_PATH="$PWD/data"
 CONTAINER_DATA_PATH="/app/data"
 
@@ -135,9 +134,6 @@ if [ ! -d "$HOST_DATA_PATH" ]; then
     echo "Please ensure the benchmark data is present at this location: $HOST_DATA_PATH"
     exit 1
 fi
-
-# Just print a single startup message
-echo -n "Starting benchmark with: $ENGINE engine, $THREADS threads, chunk size $CHUNK_SIZE, dataset=$DATASET... "
 
 if [[ "$DATASET" == *.json ]]; then
     # If it's a single JSON file, use it directly
@@ -200,8 +196,67 @@ docker run -it --rm \
      --chunk-size "$CHUNK_SIZE" \
      --output "tmp/$COMPARISON_DIR/llg-results" \
      --llg $FILES_TO_PROCESS
-
 echo "--- LLG engine benchmark completed ---"
+
+echo "--- Running benchmark with XGR engine ---"
+docker run -it --rm \
+   -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
+   -v "$PWD/tmp:/app/tmp" \
+   maskbench-env:private-latest \
+   python -m src.maskbench.scripts.run_maskbench \
+     --num-threads "$THREADS" \
+     --chunk-size "$CHUNK_SIZE" \
+     --output "tmp/$COMPARISON_DIR/xgr-results" \
+     --xgr $FILES_TO_PROCESS
+echo "--- XGR engine benchmark completed ---"
+
+echo "--- Running benchmark with XGR-CPP engine ---"
+docker run -it --rm \
+   -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
+   -v "$PWD/tmp:/app/tmp" \
+   maskbench-env:private-latest \
+   python -m src.maskbench.scripts.run_maskbench \
+     --num-threads "$THREADS" \
+     --chunk-size "$CHUNK_SIZE" \
+     --output "tmp/$COMPARISON_DIR/xgr-cpp-results" \
+     --xgr-cpp $FILES_TO_PROCESS
+echo "--- XGR-CPP engine benchmark completed ---"
+
+echo "--- Running benchmark with XGR-Compliant engine ---"
+docker run -it --rm \
+   -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
+   -v "$PWD/tmp:/app/tmp" \
+   maskbench-env:private-latest \
+   python -m src.maskbench.scripts.run_maskbench \
+     --num-threads "$THREADS" \
+     --chunk-size "$CHUNK_SIZE" \
+     --output "tmp/$COMPARISON_DIR/xgr-compliant-results" \
+     --xgr-compliant $FILES_TO_PROCESS
+echo "--- XGR-Compliant engine benchmark completed ---"
+
+echo "--- Running benchmark with Outlines engine ---"
+docker run -it --rm \
+   -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
+   -v "$PWD/tmp:/app/tmp" \
+   maskbench-env:private-latest \
+   python -m src.maskbench.scripts.run_maskbench \
+     --num-threads "$THREADS" \
+     --chunk-size "$CHUNK_SIZE" \
+     --output "tmp/$COMPARISON_DIR/outlines-results" \
+     --outlines $FILES_TO_PROCESS
+echo "--- Outlines engine benchmark completed ---"
+
+echo "--- Running benchmark with LlamaCPP engine ---"
+docker run -it --rm \
+   -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
+   -v "$PWD/tmp:/app/tmp" \
+   maskbench-env:private-latest \
+   python -m src.maskbench.scripts.run_maskbench \
+     --num-threads "$THREADS" \
+     --chunk-size "$CHUNK_SIZE" \
+     --output "tmp/$COMPARISON_DIR/llamacpp-results" \
+     --llamacpp $FILES_TO_PROCESS
+echo "--- LlamaCPP engine benchmark completed ---"
 
 echo "--- Generating comparison charts and results ---"
 # Create a persistent results directory
@@ -213,42 +268,50 @@ mkdir -p "$RESULTS_DIR/plots"
 docker run -it --rm \
    -v "$PWD/tmp:/app/tmp" \
    -v "$PWD/$RESULTS_DIR/plots:/app/plots" \
-   -e PYTHONDONTWRITEBYTECODE=1 \
    -e MPLBACKEND=Agg \
    maskbench-env:private-latest \
    python -m src.maskbench.scripts.maskbench_results \
      tmp/$COMPARISON_DIR/pse-results \
-     tmp/$COMPARISON_DIR/llg-results
+     tmp/$COMPARISON_DIR/llg-results \
+     tmp/$COMPARISON_DIR/xgr-results \
+     tmp/$COMPARISON_DIR/xgr-cpp-results \
+     tmp/$COMPARISON_DIR/xgr-compliant-results \
+     tmp/$COMPARISON_DIR/outlines-results \
+     tmp/$COMPARISON_DIR/llamacpp-results
 
 # Copy results to the persistent location
 cp "tmp/$COMPARISON_DIR/pse-results/stats.txt" "$RESULTS_DIR/pse-stats.json" 2>/dev/null || true
 cp "tmp/$COMPARISON_DIR/llg-results/stats.txt" "$RESULTS_DIR/llg-stats.json" 2>/dev/null || true
 cp "tmp/$COMPARISON_DIR/pse-results/entries.txt" "$RESULTS_DIR/pse-entries.json" 2>/dev/null || true
 cp "tmp/$COMPARISON_DIR/llg-results/entries.txt" "$RESULTS_DIR/llg-entries.json" 2>/dev/null || true
+cp "tmp/$COMPARISON_DIR/xgr-results/entries.txt" "$RESULTS_DIR/xgr-entries.json" 2>/dev/null || true
+cp "tmp/$COMPARISON_DIR/xgr-cpp-results/entries.txt" "$RESULTS_DIR/xgr-cpp-entries.json" 2>/dev/null || true
+cp "tmp/$COMPARISON_DIR/xgr-compliant-results/entries.txt" "$RESULTS_DIR/xgr-compliant-entries.json" 2>/dev/null || true
+cp "tmp/$COMPARISON_DIR/outlines-results/entries.txt" "$RESULTS_DIR/outlines-entries.json" 2>/dev/null || true
+cp "tmp/$COMPARISON_DIR/llamacpp-results/entries.txt" "$RESULTS_DIR/llamacpp-entries.json" 2>/dev/null || true
 
 echo "Comparison results and charts are available in the '$RESULTS_DIR' directory"
 
 # Determine the current user and hostname for informational purposes
 REMOTE_USER=$(whoami)
-REMOTE_HOSTNAME=$(hostname)
+# Attempt to ascertain the public IP address; default to hostname if unobtainable.
+REMOTE_ADDRESS=$(curl -s ifconfig.me)
+if [ -z "$REMOTE_ADDRESS" ]; then
+    REMOTE_ADDRESS=$(hostname)
+fi
 
 # Construct the absolute path to the results directory on this machine
 RESULTS_FULL_PATH="$PWD/$RESULTS_DIR"
 
-# Formulate a template secure copy command.
-# The user will need to replace <remote_host_or_ip> with the actual address.
-SCP_TEMPLATE="scp -r \"${REMOTE_USER}@<remote_host_or_ip>:${RESULTS_FULL_PATH}\" ."
+# Formulate a template secure copy command using the determined address.
+SCP_TEMPLATE="scp -r \"${REMOTE_USER}@${REMOTE_ADDRESS}:${RESULTS_FULL_PATH}\" ."
 
 echo ""
 echo "----------------------------------------------------------------------"
 echo "Benchmark complete."
 echo ""
-echo "Results are located in the directory: ${RESULTS_FULL_PATH}"
-echo "on host: ${REMOTE_HOSTNAME} (user: ${REMOTE_USER})"
-echo ""
-echo "To transfer the results directory ('$RESULTS_DIR') to your local machine,"
-echo "execute a command similar to the following from your local terminal,"
-echo "replacing '<remote_host_or_ip>' with the correct hostname or IP address:"
+echo "If these results need to be transferred to your local machine,"
+echo "execute a command similar to the following from your local terminal."
 echo ""
 echo "  ${SCP_TEMPLATE}"
 echo ""

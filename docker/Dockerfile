@@ -26,6 +26,8 @@ WORKDIR /app
 # --- toolchain & build flags -----------------------------------------------
 ENV CC=gcc CXX=g++
 # ---------------------------------------------------------------------------
+ARG CACHEBUST=0
+
 
 # Create and set the path for the virtual environment using uv
 RUN uv venv --python 3.12
