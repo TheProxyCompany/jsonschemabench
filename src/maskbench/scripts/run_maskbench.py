@@ -190,6 +190,10 @@ if __name__ == "__main__":
     args_to_pass = [a for a in sys.argv[1:] if a not in args.files]
     cmd += args_to_pass
 
+    # Print information about source glob patterns
+    src_paths = ", ".join(args.files)
+    print(f"Expanded '{src_paths}' to {len(file_list)} JSON files", file=sys.stderr)
+    
     info = f"{len(file_list)} files, timeout {args.time_limit}s, memory {args.mem_limit}GB, "
     info += f"output {output_path}; {args.num_threads} threads; chunk size {args.chunk_size}; cmd: {' '.join(cmd)}"
 

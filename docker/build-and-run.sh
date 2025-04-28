@@ -150,26 +150,27 @@ if [[ "$DATASET" == *.json ]]; then
     # If it's a single JSON file, use it directly
     FILES_TO_PROCESS="$DATASET"
 else
-    # List all JSON files in the directory
-    # Make sure to use find to get absolute paths
+    # Simply pass the dataset path to the runner which will handle globbing internally
     if [ -d "$DATASET" ]; then
-        echo "Finding JSON files in $DATASET"
-        JSON_FILES=$(find "$DATASET" -name "*.json" | tr '\n' ' ')
-        FILES_TO_PROCESS="$JSON_FILES"
+        echo "Passing directory $DATASET to runner for JSON file processing"
+        FILES_TO_PROCESS="$DATASET"
+    elif [ -f "$DATASET" ]; then
+        echo "Processing single file $DATASET"
+        FILES_TO_PROCESS="$DATASET"
     else
-        echo "Warning: Dataset path $DATASET not found or is not a directory"
-        FILES_TO_PROCESS="$DATASET"  # Use as-is, let the runner handle it
+        # Try as a glob pattern
+        echo "Passing pattern $DATASET to runner"
+        FILES_TO_PROCESS="$DATASET"
     fi
 fi
 
-# Check if we found files
-if [[ -n "$FILES_TO_PROCESS" ]]; then
-    FILE_COUNT=$(echo "$FILES_TO_PROCESS" | wc -w | tr -d ' ')
-    # Add completion to the starting line
-    echo "found $FILE_COUNT JSON files"
+# Let the runner handle file counting now, as it will do the globbing
+if [[ "$DATASET" == *.json ]]; then
+    echo "processing 1 JSON file"
+elif [ -d "$DATASET" ]; then
+    echo "processing JSON files from directory (count determined by runner)"
 else
-    echo "no files found, using directory path"
-    FILES_TO_PROCESS="$DATASET"
+    echo "processing files matching pattern (count determined by runner)"
 fi
 
 docker run -it --rm \

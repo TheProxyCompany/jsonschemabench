@@ -254,9 +254,27 @@ def get_files(args):
     for arg in args.files:
         if arg.endswith(".json"):
             files.append(arg)
+        elif os.path.isdir(arg):
+            # Look for JSON files in the directory (recursively if needed)
+            json_files = glob.glob(os.path.join(arg, "**/*.json"), recursive=True)
+            files.extend(json_files)
         else:
-            files.extend(glob.glob(arg + "/*.json"))
-    return files
+            # Handle glob patterns directly
+            json_files = glob.glob(arg)
+            if not json_files and not arg.endswith("/*.json"):
+                # Try appending /*.json if the glob didn't match anything
+                json_files = glob.glob(os.path.join(arg, "*.json"))
+            files.extend(json_files)
+    
+    # Remove any duplicates while preserving order
+    unique_files = []
+    seen = set()
+    for file in files:
+        if file not in seen:
+            seen.add(file)
+            unique_files.append(file)
+    
+    return unique_files
 
 
 def main():
