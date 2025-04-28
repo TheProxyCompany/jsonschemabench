@@ -125,8 +125,7 @@ if [[ ! "$DATASET" == data/* ]]; then
 fi
 
 # --- Run the Docker container ---
-echo "--- Running container interactively ---"
-echo $PWD
+echo "--- Running container interactively"
 HOST_DATA_PATH="$PWD/data"
 CONTAINER_DATA_PATH="/app/data"
 
@@ -228,4 +227,29 @@ cp "tmp/$COMPARISON_DIR/pse-results/entries.txt" "$RESULTS_DIR/pse-entries.json"
 cp "tmp/$COMPARISON_DIR/llg-results/entries.txt" "$RESULTS_DIR/llg-entries.json" 2>/dev/null || true
 
 echo "Comparison results and charts are available in the '$RESULTS_DIR' directory"
-echo "--- Container exited ---"
+
+# Determine the current user and hostname for informational purposes
+REMOTE_USER=$(whoami)
+REMOTE_HOSTNAME=$(hostname)
+
+# Construct the absolute path to the results directory on this machine
+RESULTS_FULL_PATH="$PWD/$RESULTS_DIR"
+
+# Formulate a template secure copy command.
+# The user will need to replace <remote_host_or_ip> with the actual address.
+SCP_TEMPLATE="scp -r \"${REMOTE_USER}@<remote_host_or_ip>:${RESULTS_FULL_PATH}\" ."
+
+echo ""
+echo "----------------------------------------------------------------------"
+echo "Benchmark complete."
+echo ""
+echo "Results are located in the directory: ${RESULTS_FULL_PATH}"
+echo "on host: ${REMOTE_HOSTNAME} (user: ${REMOTE_USER})"
+echo ""
+echo "To transfer the results directory ('$RESULTS_DIR') to your local machine,"
+echo "execute a command similar to the following from your local terminal,"
+echo "replacing '<remote_host_or_ip>' with the correct hostname or IP address:"
+echo ""
+echo "  ${SCP_TEMPLATE}"
+echo ""
+echo "----------------------------------------------------------------------"
