@@ -50,22 +50,17 @@ echo "--- SSH Agent check complete ---"
 echo "--- Building Docker image (maskbench-env:private-latest) ---"
 DOCKER_BUILDKIT=1 \
 docker build \
-    --build-arg INSTALL_DEV_BRANCH=$SSH_ENABLED `# Pass arg to Dockerfile` \
-    --ssh default `# Use the SSH agent socket defined by SSH_AUTH_SOCK` \
+    --build-arg INSTALL_DEV_BRANCH=$SSH_ENABLED \
+    --ssh default \
     -t maskbench-env:private-latest \
-    -f docker/Dockerfile . `# Specify Dockerfile location relative to repo root`
+    -f docker/Dockerfile .
 echo "--- Docker image build complete ---"
 
 
 # --- Run the Docker container (example) ---
 echo "--- Running container interactively ---"
-# Adjust the host data path on the VM
-HOST_DATA_PATH="/home/azureuser/jsonschemabench/data" # Example path on VM
-CONTAINER_DATA_PATH="/app/src/maskbench/data"
-# Create results directory on VM if it doesn't exist
-mkdir -p "$(pwd)/results_docker"
-HOST_RESULTS_PATH="$(pwd)/results_docker" # Save results to host VM
-CONTAINER_TMP_PATH="/app/tmp"
+HOST_DATA_PATH="/home/azureuser/jsonschemabench/data"
+CONTAINER_DATA_PATH="/app/data"
 
 # Ensure the data path exists on the VM before mounting
 if [ ! -d "$HOST_DATA_PATH" ]; then
