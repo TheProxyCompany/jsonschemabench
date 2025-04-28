@@ -132,10 +132,10 @@ def main(folder: str):
                     else:
                         stats.masks_us_over_10ms += us
                         stats.num_masks_over_10ms += 1
-    stats.avg_masks_under_10ms = stats.masks_us_under_10ms // stats.num_masks_under_10ms
-    stats.avg_masks_over_10ms = stats.masks_us_over_10ms // stats.num_masks_over_10ms
-    stats.avg_mask_us = stats.masks_us // stats.num_tokens
-    print(json.dumps(stats.__dict__, indent=2))
+    # Add safety checks for division by zero
+    stats.avg_masks_under_10ms = stats.masks_us_under_10ms // max(stats.num_masks_under_10ms, 1)
+    stats.avg_masks_over_10ms = stats.masks_us_over_10ms // max(stats.num_masks_over_10ms, 1)
+    stats.avg_mask_us = stats.masks_us // max(stats.num_tokens, 1)
     with open(folder + "/stats.txt", "w") as f:
         f.write(json.dumps(stats.__dict__, indent=2))
     with open(folder + "/ttfm_us.csv", "w") as f:
@@ -189,7 +189,7 @@ def main(folder: str):
     entries["timeout"] = stats.num_timeouts
     entries["validation error"] = stats.num_validation_errors
     entries["invalidation error"] = stats.num_invalidation_errors
-    print(json.dumps(entries, indent=2))
+    # print(json.dumps(entries, indent=2))
     with open(folder + "/entries.txt", "w") as f:
         f.write(json.dumps(entries, indent=2))
     # print(f"{'ttfm_p' + str(p):10}, {ttfm_us[int(len(ttfm_us) * p / 100)]}")
@@ -270,14 +270,60 @@ plot_colors = {
 
 
 def plot_metrics(data_list: list[dict], id: str, keys: list[str], title: str):
-    labels = [data["meta"]["name"] for data in data_list]
-    values = {
-        label: [data[key] for key in keys] for label, data in zip(labels, data_list)
-    }
+    if not data_list:
+        print(f"Warning: No data provided for plot {id}")
+        return
+
+    # Create plots directory if it doesn't exist
+    os.makedirs("plots", exist_ok=True)
+
+    # Debug information
+    print(f"Plotting {id} with keys: {keys}")
+    print(f"Data: {[d['meta']['name'] if 'meta' in d else 'unknown' for d in data_list]}")
+
+    # Verify data has required keys
+    for data in data_list:
+        if 'meta' not in data:
+            print(f"Warning: Missing 'meta' in data for {id}")
+            continue
+        for key in keys:
+            if key not in data:
+                print(f"Warning: Missing key '{key}' in {data['meta'].get('name', 'unknown')}")
+
+    # Get labels safely
+    labels = []
+    for data in data_list:
+        if 'meta' in data and 'name' in data['meta']:
+            labels.append(data['meta']['name'])
+        else:
+            labels.append(f"Engine {len(labels)+1}")
+
+    # Create values dictionary with safe access
+    values = {}
+    for label, data in zip(labels, data_list):
+        key_values = []
+        for key in keys:
+            if key in data:
+                key_values.append(data[key])
+            else:
+                print(f"Warning: Missing key {key} for {label}")
+                # Use a small value as placeholder
+                key_values.append(1)
+        values[label] = key_values
+
+    # Ensure we have data to plot
+    if not values or all(not v for v in values.values()):
+        print(f"Warning: No values to plot for {id}")
+        # Create a placeholder image
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.text(0.5, 0.5, f"No data available for {title}",
+                ha='center', va='center', fontsize=14)
+        plt.savefig(f"plots/{id}.png", dpi=300)
+        return
 
     # Calculate positions
     y = np.arange(len(keys))
-    height = 0.8 / len(labels)
+    height = 0.8 / max(len(labels), 1)
 
     # Set up the plot
     fig, ax = plt.subplots(figsize=(10, len(keys) + 1))
@@ -285,26 +331,29 @@ def plot_metrics(data_list: list[dict], id: str, keys: list[str], title: str):
 
     cmap = plt.get_cmap("tab10")
 
-    custom_colors = [
-        "#000000",
-        "#0379b6",
-        "#039eb6",
-        "#d16626",
-    ]
-
+    # Use default colors if custom ones aren't available
     custom_colors = []
-    for c in plot_colors.values():
-        if isinstance(c, int):
-            custom_colors.append(cmap(c))
+    for i, engine in enumerate(labels):
+        if engine.lower() in plot_colors:
+            c = plot_colors[engine.lower()]
+            if isinstance(c, int):
+                custom_colors.append(cmap(c))
+            else:
+                custom_colors.append(c)
         else:
-            custom_colors.append(c)
+            # Use color from colormap for unlisted engines
+            custom_colors.append(cmap(i % 10))
 
     for i, (label, tbm_values) in enumerate(values.items()):
         pos = y + (len(labels) - i - 1) * height - 0.4 + (height / 2)
         bar_positions.append(pos)
+
+        # Handle potential zero values (use small value instead)
+        safe_values = [max(v, 0.1) for v in tbm_values]
+
         bars = ax.barh(
             pos,
-            tbm_values,
+            safe_values,
             height,
             label=label,
             color=custom_colors[i % len(custom_colors)],
@@ -312,9 +361,15 @@ def plot_metrics(data_list: list[dict], id: str, keys: list[str], title: str):
 
         # Add annotations on the bars
         for j, (bar, value) in enumerate(zip(bars, tbm_values)):
+            # Skip annotation if value is too small
+            if value < 0.1:
+                continue
+
             label_text = format_time(value)
+            # Ensure text is positioned correctly
+            text_x = max(bar.get_width() * 1.1, 1)
             ax.text(
-                bar.get_width() * 1.1,
+                text_x,
                 bar.get_y() + bar.get_height() / 2,
                 label_text,
                 ha="left",
@@ -323,22 +378,34 @@ def plot_metrics(data_list: list[dict], id: str, keys: list[str], title: str):
                 rotation=0,
             )
 
-            # Add speedup/slowdown factor
-            all_values_for_key = [values[engine][j] for engine in labels]
-            fastest = min(all_values_for_key)
-            factor = value / fastest
+            # Add speedup/slowdown factor only if meaningful
+            try:
+                all_values_for_key = [values[engine][j] for engine in labels]
+                fastest = max(min(all_values_for_key), 0.1)  # Avoid division by zero
+                factor = value / fastest
 
-            speedup_text = f"{factor:.0f}x"
-            ax.text(
-                bar.get_width() / 1.2,
-                bar.get_y() + bar.get_height() / 2,
-                speedup_text,
-                ha="right",
-                va="center",
-                fontsize=8,
-                rotation=0,
-                color="white",
-            )
+                if factor > 1.1:  # Only show factor if there's a meaningful difference
+                    speedup_text = f"{factor:.1f}x"
+                    text_color = 'white'
+                    # If bar is too narrow, position text at the start of the bar
+                    if bar.get_width() < 50:
+                        text_pos = bar.get_width() + 5
+                        text_color = 'black'
+                    else:
+                        text_pos = bar.get_width() / 2
+
+                    ax.text(
+                        text_pos,
+                        bar.get_y() + bar.get_height() / 2,
+                        speedup_text,
+                        ha="center",
+                        va="center",
+                        fontsize=8,
+                        rotation=0,
+                        color=text_color,
+                    )
+            except (ZeroDivisionError, ValueError) as e:
+                print(f"Warning: Could not compute speed factor: {e}")
 
     # Configure axes
     ax.set_xscale("log", base=10)
@@ -349,10 +416,18 @@ def plot_metrics(data_list: list[dict], id: str, keys: list[str], title: str):
     ax.legend()
 
     plt.tight_layout()
-    plt.savefig(f"plots/{id}.png", dpi=300)
+
+    try:
+        plt.savefig(f"plots/{id}.png", dpi=300)
+        print(f"Plot saved to plots/{id}.png")
+    except Exception as e:
+        print(f"Error saving plot: {e}")
+
+    plt.close()  # Explicitly close to prevent memory issues
 
 
 if __name__ == "__main__":
+    
     folders = sys.argv[1:]
     quick = False
     if len(folders) > 0 and folders[0] == "-q":
@@ -421,21 +496,50 @@ if __name__ == "__main__":
 
     keys = ents[0].keys()
 
-    plot_metrics(
-        ents,
-        keys=[k for k in keys if k.startswith("TBM ")],
-        id="tbm",
-        title="Per-token mask computation time (Time Between Masks aka TBM)",
-    )
-    plot_metrics(
-        ents,
-        keys=[k for k in keys if k.startswith("TTFM ")],
-        id="ttfm",
-        title="Grammar compilation (Time To First Mask aka TTFM); 900s timeout",
-    )
-    plot_metrics(
-        ents,
-        keys=["TTFM avg", "TBM avg"],
-        id="hero",
-        title="Time To First Mask (TTFM) and Time Between Masks (TBM)",
-    )
+    # Check if we have enough data to generate plots
+    if len(ents) < 1:
+        print("Warning: Not enough data to generate comparison plots")
+    else:
+        # Extract available keys for plotting
+        all_keys = set()
+        for e in ents:
+            all_keys.update(e.keys())
+        all_keys.discard('meta')  # Don't include meta in plotting keys
+
+        # Find TBM and TTFM keys that exist in the data
+        tbm_keys = [k for k in all_keys if k.startswith("TBM ") and all(k in e for e in ents)]
+        ttfm_keys = [k for k in all_keys if k.startswith("TTFM ") and all(k in e for e in ents)]
+
+        # Check if we have average keys for hero plot
+        has_tbm_avg = "TBM avg" in all_keys and all("TBM avg" in e for e in ents)
+        has_ttfm_avg = "TTFM avg" in all_keys and all("TTFM avg" in e for e in ents)
+
+        if tbm_keys:
+            plot_metrics(
+                ents,
+                keys=tbm_keys,
+                id="tbm",
+                title="Per-token mask computation time (Time Between Masks aka TBM)",
+            )
+        else:
+            print("Warning: No TBM data available for plotting")
+
+        if ttfm_keys:
+            plot_metrics(
+                ents,
+                keys=ttfm_keys,
+                id="ttfm",
+                title="Grammar compilation (Time To First Mask aka TTFM); 900s timeout",
+            )
+        else:
+            print("Warning: No TTFM data available for plotting")
+
+        if has_tbm_avg and has_ttfm_avg:
+            plot_metrics(
+                ents,
+                keys=["TTFM avg", "TBM avg"],
+                id="hero",
+                title="Time To First Mask (TTFM) and Time Between Masks (TBM)",
+            )
+        else:
+            print("Warning: Missing average data for hero plot")

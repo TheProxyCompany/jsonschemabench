@@ -171,7 +171,13 @@ fi
 # Create output directories for comparison results and plots
 COMPARISON_DIR="comparison-$(date +%s)"
 mkdir -p "tmp/$COMPARISON_DIR"
+mkdir -p "tmp/$COMPARISON_DIR/pse-results"
+mkdir -p "tmp/$COMPARISON_DIR/llg-results"
 mkdir -p "plots"
+
+# Ensure directory permissions are correct for Docker
+chmod -R 777 "tmp/$COMPARISON_DIR"
+chmod -R 777 plots
 
 echo "--- Running benchmark with PSE engine ---"
 docker run -it --rm \
@@ -205,19 +211,26 @@ RESULTS_DIR="benchmark_results-$(date +%s)"
 mkdir -p "$RESULTS_DIR"
 mkdir -p "$RESULTS_DIR/plots"
 
+# Generate comparison results with matplotlib backend that works in Docker
 docker run -it --rm \
    -v "$PWD/tmp:/app/tmp" \
-   -v "$PWD/plots:/app/plots" \
+   -v "$PWD/$RESULTS_DIR/plots:/app/plots" \
    maskbench-env:private-latest \
-   python -m src.maskbench.scripts.maskbench_results "tmp/$COMPARISON_DIR/pse-results" "tmp/$COMPARISON_DIR/llg-results"
+   bash -c "pip install matplotlib numpy --no-cache-dir && MPLBACKEND=Agg python -m src.maskbench.scripts.maskbench_results tmp/$COMPARISON_DIR/pse-results tmp/$COMPARISON_DIR/llg-results"
 
-# Copy the plots to a persistent location
-echo "--- Copying results to persistent location ---"
-cp -r plots/* "$RESULTS_DIR/plots/" 2>/dev/null || true
+# Copy results to the persistent location
+echo "--- Copying additional results to persistent location ---"
 cp "tmp/$COMPARISON_DIR/pse-results/stats.txt" "$RESULTS_DIR/pse-stats.json" 2>/dev/null || true
 cp "tmp/$COMPARISON_DIR/llg-results/stats.txt" "$RESULTS_DIR/llg-stats.json" 2>/dev/null || true
 cp "tmp/$COMPARISON_DIR/pse-results/entries.txt" "$RESULTS_DIR/pse-entries.json" 2>/dev/null || true
 cp "tmp/$COMPARISON_DIR/llg-results/entries.txt" "$RESULTS_DIR/llg-entries.json" 2>/dev/null || true
+
+# Check if plots were generated successfully
+if [ -d "$RESULTS_DIR/plots" ] && [ "$(ls -A "$RESULTS_DIR/plots" 2>/dev/null)" ]; then
+    echo "--- Plots generated successfully ---"
+else
+    echo "Warning: No plots were generated in $RESULTS_DIR/plots"
+fi
 
 # Generate a simple markdown report
 cat > "$RESULTS_DIR/README.md" << EOF
@@ -244,7 +257,11 @@ The following charts show a performance comparison between PSE and LLG engines:
 ![Combined Performance](./plots/hero.png)
 
 ## Raw Data
-The raw benchmark data is available in the JSON files in this directory.
+The raw benchmark data is available in the JSON files in this directory:
+- pse-stats.json: PSE engine statistics
+- llg-stats.json: LLG engine statistics
+- pse-entries.json: PSE engine detailed metrics
+- llg-entries.json: LLG engine detailed metrics
 EOF
 
 echo "--- Results generation completed ---"
