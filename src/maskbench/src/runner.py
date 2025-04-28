@@ -11,7 +11,7 @@ import argparse
 import signal
 import traceback
 
-from .engine import Engine
+from src.maskbench.src.engine import Engine
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 
 
@@ -178,6 +178,10 @@ def setup_argparse():
     parser.add_argument(
         "--num-threads", type=int, default=defl_cpu, help="Number of threads to run"
     )
+    
+    parser.add_argument(
+        "--chunk-size", type=int, default=100, help="Number of files to process per batch (for orchestrator)"
+    )
 
     parser.add_argument(
         "--multi", action="store_true", help="Enable running from run_maskbench.py"
@@ -196,7 +200,7 @@ def get_engine(args) -> Engine:
     engine: Engine | None = None
 
     if args.xgr or args.xgr_compliant or args.xgr_cpp:
-        from .xgr_engine import XgrEngine
+        from src.maskbench.src.xgr_engine import XgrEngine
 
         assert not engine, "Multiple engines specified"
         engine = XgrEngine()
@@ -204,25 +208,25 @@ def get_engine(args) -> Engine:
         engine.llama_cpp = args.xgr_cpp
 
     if args.pse:
-        from .pse_engine import PSEEngine
+        from src.maskbench.src.pse_engine import PSEEngine
 
         assert not engine, "Multiple engines specified"
         engine = PSEEngine()
 
     if args.llg:
-        from .llg_engine import LlgEngine
+        from src.maskbench.src.llg_engine import LlgEngine
 
         assert not engine, "Multiple engines specified"
         engine = LlgEngine()
 
     if args.outlines:
-        from .outlines_engine import OutlinesEngine
+        from src.maskbench.src.outlines_engine import OutlinesEngine
 
         assert not engine, "Multiple engines specified"
         engine = OutlinesEngine()
 
     if args.llamacpp:
-        from .llamacpp_engine import LlamaCppEngine
+        from src.maskbench.src.llamacpp_engine import LlamaCppEngine
 
         assert not engine, "Multiple engines specified"
         engine = LlamaCppEngine()
@@ -258,6 +262,9 @@ def get_files(args):
 def main():
     global output_path
 
+    # Set environment variable to suppress tokenizers parallelism warnings
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
     parser = setup_argparse()
 
     args = parser.parse_args()
@@ -283,6 +290,13 @@ def main():
     random.shuffle(files)
 
     os.makedirs(output_path, exist_ok=True)
+
+    # rely on default SIGALRM handler (terminates the process)
+    # def timeout_handler(signum, frame):
+    #     print(f"Timeout ({time_limit_s}s). Terminating...", file=sys.stderr)
+    #     os.kill(os.getpid(), signal.SIGKILL)
+
+    # signal.signal(signal.SIGALRM, timeout_handler)
 
     for f in files:
         signal.alarm(time_limit_s)

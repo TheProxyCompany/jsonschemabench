@@ -12,7 +12,7 @@ from typing import List, Optional, TypeVar, Type, TYPE_CHECKING, Callable
 
 
 if TYPE_CHECKING:
-    from core.types import Metric, AggregatedPerfMetrics
+    from jsonbench.core.types import Metric, AggregatedPerfMetrics
 
 GENERATION_TIMEOUT = 60
 COMPILATION_TIMEOUT = 10
@@ -22,7 +22,7 @@ T = TypeVar("T")
 
 
 def load_config(config_type: Type[T], config_path: str) -> T:
-    return from_dict(data_class=config_type, data=OmegaConf.load(config_path))
+    return from_dict(data_class=config_type, data=OmegaConf.load(config_path))  # type: ignore
 
 
 def safe_divide(a: Optional[float], b: Optional[float]) -> Optional[float]:

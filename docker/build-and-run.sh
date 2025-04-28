@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e # Exit immediately if a command exits with a non-zero status.
+set -e
 
 echo "--- Ensuring Docker is installed and user is in docker group ---"
 # Check if Docker is already installed
@@ -25,10 +25,22 @@ else
     echo "Docker is installed."
 fi
 
-# Check group membership again (important after potential installation)
-if ! groups $USER | grep &>/dev/null '\bdocker\b'; then
-    echo "User $USER is not in the docker group. Please log out and log back in, then re-run this script."
-    exit 1
+# Check if we're on macOS (which doesn't use the docker group mechanism)
+if [[ "$(uname)" == "Darwin" ]]; then
+    echo "Running on macOS - docker group check not applicable"
+else
+    # Check group membership again (important after potential installation)
+    if ! id -nG $USER | grep -qw "docker"; then
+        echo "User $USER is not in the docker group. Adding user to docker group..."
+        if command -v usermod &> /dev/null; then
+            sudo usermod -aG docker $USER
+            echo "User added to docker group. You MUST log out and log back in for group changes to take effect before running this script again."
+            exit 1
+        else
+            echo "Warning: usermod command not found. Cannot add user to docker group automatically."
+            echo "You may need to run docker commands with sudo."
+        fi
+    fi
 fi
 echo "--- Docker user group check complete ---"
 
@@ -57,9 +69,71 @@ docker build \
 echo "--- Docker image build complete ---"
 
 
-# --- Run the Docker container (example) ---
+# Display usage
+function show_help() {
+    echo "Usage: $0 [options]"
+    echo ""
+    echo "Options:"
+    echo "  -t, --threads NUM     Number of threads (default: 16)"
+    echo "  -c, --chunk NUM       Chunk size (default: 100)"
+    echo "  -d, --dataset PATH    Dataset path relative to data/ (default: MaskBench/)"
+    echo "  -e, --engine NAME     Engine to use (default: pse, options: pse, xgr, llg, outlines)"
+    echo "  -h, --help            Show this help message"
+    echo ""
+    echo "Example: $0 -t 8 -c 10 -d Github_easy/ -e pse"
+}
+
+# Parse command-line arguments
+# Default to 16 threads - the Python code will automatically use min(thread_count, os.cpu_count())
+THREADS=16
+CHUNK_SIZE=100  # Use larger chunk size for more efficiency
+DATASET="MaskBench/" # Default to whole benchmark directory
+ENGINE="llg"
+
+# Parse options
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -t|--threads)
+            THREADS="$2"
+            shift 2
+            ;;
+        -c|--chunk)
+            CHUNK_SIZE="$2"
+            shift 2
+            ;;
+        -d|--dataset)
+            DATASET="$2"
+            shift 2
+            ;;
+        -e|--engine)
+            ENGINE="$2"
+            shift 2
+            ;;
+        -m|--max-files)
+            MAX_FILES="$2"
+            shift 2
+            ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            show_help
+            exit 1
+            ;;
+    esac
+done
+
+# Add data/ prefix if not already there
+if [[ ! "$DATASET" == data/* ]]; then
+    DATASET="data/$DATASET"
+fi
+
+# --- Run the Docker container ---
 echo "--- Running container interactively ---"
-HOST_DATA_PATH="/home/azureuser/jsonschemabench/data"
+echo $PWD
+HOST_DATA_PATH="$PWD/data"
 CONTAINER_DATA_PATH="/app/data"
 
 # Ensure the data path exists on the VM before mounting
@@ -69,9 +143,41 @@ if [ ! -d "$HOST_DATA_PATH" ]; then
     exit 1
 fi
 
+# Just print a single startup message
+echo -n "Starting benchmark with: $ENGINE engine, $THREADS threads, chunk size $CHUNK_SIZE, dataset=$DATASET... "
+
+if [[ "$DATASET" == *.json ]]; then
+    # If it's a single JSON file, use it directly
+    FILES_TO_PROCESS="$DATASET"
+else
+    # List all JSON files in the directory
+    # Make sure to use find to get absolute paths
+    if [ -d "$DATASET" ]; then
+        echo "Finding JSON files in $DATASET"
+        JSON_FILES=$(find "$DATASET" -name "*.json" | tr '\n' ' ')
+        FILES_TO_PROCESS="$JSON_FILES"
+    else
+        echo "Warning: Dataset path $DATASET not found or is not a directory"
+        FILES_TO_PROCESS="$DATASET"  # Use as-is, let the runner handle it
+    fi
+fi
+
+# Check if we found files
+if [[ -n "$FILES_TO_PROCESS" ]]; then
+    FILE_COUNT=$(echo "$FILES_TO_PROCESS" | wc -w | tr -d ' ')
+    # Add completion to the starting line
+    echo "found $FILE_COUNT JSON files"
+else
+    echo "no files found, using directory path"
+    FILES_TO_PROCESS="$DATASET"
+fi
+
 docker run -it --rm \
    -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
-   -v "$HOST_RESULTS_PATH:$CONTAINER_TMP_PATH" \
-   maskbench-env:private-latest
+   maskbench-env:private-latest \
+   python -m src.maskbench.scripts.run_maskbench \
+     --num-threads "$THREADS" \
+     --chunk-size "$CHUNK_SIZE" \
+     --"$ENGINE" $FILES_TO_PROCESS
 
 echo "--- Container exited ---"

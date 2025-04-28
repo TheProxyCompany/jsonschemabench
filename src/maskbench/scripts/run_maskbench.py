@@ -1,12 +1,4 @@
-"""
-Orchestrates running the maskbench runner script on multiple files using threading.
-
-This script manages a pool of worker threads to process a list of input files
-by invoking the `src.maskbench.runner` module as a subprocess for each chunk of files.
-It handles logging, progress reporting, and checking for completed files based on
-the existence of corresponding output files.
-"""
-
+#!/usr/bin/env python3
 import subprocess
 import os
 import threading
@@ -16,344 +8,207 @@ import sys
 import json
 import time
 
-# Base command for invoking the runner module
-# Note: This assumes the script is run from the project root containing the 'src' directory.
-BASE_CMD = ["python", "-m", "src.maskbench.runner"]
-LOG_LOCK = Lock()
+output_path = "tmp/output/"
+cmd = ["python3", "-m", "src.maskbench.src.runner", "--multi"]
+log_lock = Lock()
+print_lock = Lock()
 
 
-def append_to_log(entry: str, output_path: str):
-    """Appends a log entry to the log file in the specified output directory."""
-    log_file = os.path.join(output_path, "log.txt")
-    # Ensure the output directory exists; suppress errors if it already exists.
-    os.makedirs(os.path.dirname(log_file), exist_ok=True)
-    # Use a lock to prevent race conditions during file writing from multiple threads.
-    with LOG_LOCK:
-        # Open in append mode ('a')
-        with open(log_file, "a", encoding="utf-8") as log:
-            log.write(entry + "\n")
-
-
-def run_cmd(file_list: list[str], base_cmd: list[str], output_path: str) -> bool:
-    """
-    Runs the runner command as a subprocess for a list of files.
-
-    Constructs the full command, executes it with the project root as the
-    working directory, logs the output, and returns True if the subprocess
-    exited with code 0, False otherwise.
-
-    Args:
-        file_list: List of input files for this subprocess run.
-        base_cmd: The base command list (e.g., ['python', '-m', 'src.maskbench.runner', '--arg']).
-        output_path: Path to the output directory for logging.
-
-    Returns:
-        True if the subprocess ran successfully (exit code 0), False otherwise.
-    """
-    command = base_cmd + file_list
-    # Use repr for safer logging of command parts, especially paths
-    log_entry = f"Running command: {' '.join(map(repr, command))}\n"
-    success = False
-    # Assume script is in src/maskbench/scripts, project root is 3 levels up.
-    app_root = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "..")
-    )
+def run_cmd(file_list: list[str]):
+    command = cmd + file_list
+    log_entry = f"Running command: {' '.join(command)}\n"
     try:
         result = subprocess.run(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,  # Interpret stdout/stderr as text
-            check=False,  # Don't raise exception on non-zero exit code
-            cwd=app_root,  # Run from project root for correct module resolution
-            encoding="utf-8",  # Specify encoding
-            errors="replace",  # Handle potential encoding errors in output
+            text=True,
+            check=False,
         )
-        log_entry += f"cwd: {app_root}\n"
-        # Ensure stderr/stdout are strings before appending
-        stderr_str = result.stderr if result.stderr else ""
-        stdout_str = result.stdout if result.stdout else ""
-        log_entry += f"{stderr_str}{stdout_str}\nExit code: {result.returncode}\n"
-        success = result.returncode == 0
-    except FileNotFoundError:
-        # Handle case where python or the module path is wrong
-        log_entry += "Error: Command not found. Check BASE_CMD and Python path.\n"
-        success = False
+        log_entry += f"{result.stderr}{result.stdout}\nExit code: {result.returncode}\n"
     except Exception as e:
-        # Catch other potential exceptions during subprocess execution
         log_entry += f"Error running command: {e}\n"
-        success = False
-
-    append_to_log(log_entry, output_path)
-    return success
+    append_to_log(log_entry)
 
 
-def missing_files(file_list: list[str], output_path: str) -> list[str]:
-    """
-    Checks a list of input files and returns those whose corresponding output
-    file (basename match) does not exist in the output directory.
-    """
-    missing = [
+def append_to_log(entry: str):
+    log_file = os.path.join(output_path, "log.txt")
+    with log_lock:
+        with open(log_file, "a") as log:
+            log.write(entry + "\n")
+
+
+def missing_files(file_list: list[str]):
+    r = [
         f
         for f in file_list
         if not os.path.exists(os.path.join(output_path, os.path.basename(f)))
     ]
-    # Shuffle to potentially distribute work better if retrying
-    random.shuffle(missing)
-    return missing
+    random.shuffle(r)
+    return r
 
 
-def process_files_in_threads(
-    initial_file_list: list[str],
-    base_cmd: list[str],
-    output_path: str,
-    thread_count: int = 40,
-    chunk_size: int = 100,
-):
+def update_progress(num_processed, num_all_files, num_pending, t0, active_count=0):
+    """Update progress bar on a single line"""
+    now = time.monotonic() - t0
+    perc_done = num_processed / num_all_files * 100 if num_all_files > 0 else 0
+
+    # Calculate ETA
+    if num_processed > 0:
+        est_time_left = (now / num_processed * num_all_files) - now
+        eta_min = int(est_time_left // 60)
+        eta_sec = int(est_time_left % 60)
+        eta_str = f"{eta_min}m{eta_sec:02d}s"
+    else:
+        eta_str = "calculating..."
+
+    # Format elapsed time
+    elapsed_min = int(now // 60)
+    elapsed_sec = int(now % 60)
+    elapsed_str = f"{elapsed_min}m{elapsed_sec:02d}s"
+
+    # Create progress bar
+    bar_length = 30
+    filled_length = int(bar_length * perc_done / 100)
+    bar = '█' * filled_length + '░' * (bar_length - filled_length)
+
+    # Format the progress line
+    status = f"\r[{bar}] {num_processed}/{num_all_files} ({perc_done:.1f}%) | Threads: {active_count} | Pending: {num_pending} | ETA: {eta_str} | Elapsed: {elapsed_str}"
+
+    # Acquire lock to prevent output garbling
+    with print_lock:
+        sys.stdout.write(status)
+        sys.stdout.flush()
+
+
+def process_files_in_threads(file_list: list[str], thread_count=40, chunk_size=100):
     """
-    Processes a list of files using worker threads invoking the runner subprocess.
+    Processes a list of files using a specified number of threads, each handling a chunk of files.
 
-    Manages a queue of files, distributes chunks to worker threads,
-    tracks progress, and handles retrying failed files.
-
-    Args:
-        initial_file_list: Complete list of input files to process.
-        base_cmd: The base command list passed to `run_cmd`.
-        output_path: Path to the output directory for results and logs.
-        thread_count: Maximum number of worker threads to use.
-        chunk_size: Target number of files for each thread to process per subprocess call.
+    :param file_list: List of input file names.
+    :param thread_count: Number of threads to use.
+    :param chunk_size: Number of files each thread should handle in a single batch.
     """
     file_list_lock = Lock()
-    # Keep the original list for re-checking
-    original_files = initial_file_list[:]
-    # Start with files currently missing output
-    files_to_process = missing_files(original_files, output_path)
-    num_processed_successfully = 0
-    num_initially_missing = len(files_to_process)
 
-    t_start = time.monotonic()
+    file_list0 = file_list
+    file_list = missing_files(file_list)
+    num_processed = 0
+    num_all_files = len(file_list)
+    active_threads = 0
+    active_lock = Lock()
 
-    print(f"Target files to process: {num_initially_missing}")
+    t0 = time.monotonic()
 
-    if not files_to_process:
-        print("All target files already have corresponding output.")
+    print(f"Total files to process: {num_all_files}")
+
+    if not file_list:
+        print("All files processed already.")
         return
 
-    # Adjust thread count if fewer files than threads
-    actual_thread_count = min(thread_count, num_initially_missing)
-    print(f"Using {actual_thread_count} threads.")
+    thread_count = min(thread_count, len(file_list))
+    print(f"Using {thread_count} threads with chunk size {chunk_size}")
+
+    # Initialize progress display
+    update_progress(0, num_all_files, len(file_list), t0, 0)
 
     def worker():
-        # Make variables from outer scope available
-        nonlocal files_to_process, num_processed_successfully
+        nonlocal file_list, num_processed, active_threads
 
-        while True:
-            files_chunk = []
-            # --- Critical section: Access shared file list ---
-            with file_list_lock:
-                if not files_to_process:
-                    # Double check if any files are still missing output
-                    # This handles cases where a file might fail transiently
-                    files_to_process = missing_files(original_files, output_path)
+        with active_lock:
+            active_threads += 1
 
-                # If still no files, worker can exit
-                if not files_to_process:
-                    return  # Exit worker thread
+        try:
+            while True:
+                files_chunk = []
+                with file_list_lock:
+                    if not file_list:
+                        # Check for any remaining files
+                        file_list = missing_files(file_list0)
+                    if not file_list:
+                        # No more files to process
+                        break
 
-                # Determine chunk size dynamically
-                # Aim for roughly equal distribution, but respect chunk_size limit
-                # Ensure at least one file is processed if list is not empty
-                dynamic_chunk = max(
-                    1,
-                    (len(files_to_process) + actual_thread_count - 1)
-                    // actual_thread_count,
-                )
-                current_chunk_size = min(
-                    chunk_size, dynamic_chunk, len(files_to_process)
-                )
+                    # Take a chunk of files
+                    chunk = min(chunk_size, (len(file_list) // thread_count) + 20)
+                    files_chunk = file_list[:chunk]
+                    del file_list[:chunk]
 
-                # Take a chunk of files from the shared list
-                files_chunk = files_to_process[:current_chunk_size]
-                del files_to_process[:current_chunk_size]
-            # --- End Critical section ---
+                # Process this chunk of files
+                run_cmd(files_chunk)
 
-            if not files_chunk:
-                # Should ideally not happen due to logic above, but acts as safeguard
-                continue
+                # Check which files were actually processed
+                unprocessed_files = missing_files(files_chunk)
+                processed_here = len(files_chunk) - len(unprocessed_files)
 
-            # Run the command for the selected chunk of files
-            run_succeeded = run_cmd(files_chunk, base_cmd, output_path)
+                # Update counters and progress
+                with file_list_lock:
+                    num_processed += processed_here
+                    file_list.extend(unprocessed_files)
+                    num_pending = len(file_list)
+                    random.shuffle(file_list)
 
-            processed_in_chunk = 0
-            failed_in_chunk = []
+                # Update progress display
+                update_progress(num_processed, num_all_files, num_pending, t0, active_threads)
+        finally:
+            with active_lock:
+                active_threads -= 1
 
-            if run_succeeded:
-                # If subprocess exit code was 0, check which output files were created
-                failed_in_chunk = missing_files(files_chunk, output_path)
-                processed_in_chunk = len(files_chunk) - len(failed_in_chunk)
-            else:
-                # If subprocess failed, assume all files in the chunk failed processing
-                failed_in_chunk = files_chunk
-                processed_in_chunk = 0
-                # Consider adding a retry limit or specific handling for persistent failures
-
-            # --- Critical section: Update progress and remaining files ---
-            with file_list_lock:
-                num_processed_successfully += processed_in_chunk
-                # Add failed files back to the list for potential retry
-                files_to_process.extend(failed_in_chunk)
-                num_pending = len(files_to_process)
-                # Shuffle if files were added back
-                if failed_in_chunk:
-                    random.shuffle(files_to_process)
-            # --- End Critical section ---
-
-            # --- Progress Reporting ---
-            now = time.monotonic()
-            elapsed_time = now - t_start
-            # Avoid division by zero if nothing processed yet
-            progress_perc = (
-                (num_processed_successfully / num_initially_missing * 100)
-                if num_initially_missing > 0
-                else 100.0
-            )
-            # Estimate remaining time, handle division by zero
-            est_remaining_sec = (
-                (
-                    (elapsed_time / (num_processed_successfully + 1e-9))
-                    * (num_initially_missing - num_processed_successfully)
-                )
-                if num_processed_successfully < num_initially_missing
-                else 0
-            )
-
-            print(
-                f"{elapsed_time:.1f}s | OK: {processed_in_chunk}, Fail/Retry: {len(failed_in_chunk)} | "
-                f"Pending: {num_pending} | Done: {progress_perc:.1f}% ({num_processed_successfully}/{num_initially_missing}) | "
-                f"ETA: {est_remaining_sec:.1f}s",
-                flush=True,  # Ensure progress prints timely
-            )
-            # --- End Progress Reporting ---
-
-    # --- Start and manage worker threads ---
+    # Start worker threads
     threads = []
-    for i in range(actual_thread_count):
-        thread = threading.Thread(target=worker, name=f"Worker-{i + 1}")
+    for _ in range(thread_count):
+        thread = threading.Thread(target=worker)
+        thread.daemon = True
         threads.append(thread)
         thread.start()
 
-    # Wait for all worker threads to complete
+    # Wait for all threads to complete
     for thread in threads:
         thread.join()
-    # --- End thread management ---
 
-    # --- Final Summary ---
-    t_end = time.monotonic()
-    final_missing = missing_files(original_files, output_path)
-    if final_missing:
-        print(
-            f"\nWarning: {len(final_missing)} files could not be processed successfully after {t_end - t_start:.2f}s."
-        )
-        # Optionally print some missing files here if needed for debugging
-    else:
-        print(
-            f"\nAll {num_initially_missing} target files processed successfully in {t_end - t_start:.2f}s."
-        )
-    # --- End Final Summary ---
-
-
-def main():
-    """Parses arguments, prepares environment, and starts file processing."""
-    # This script needs access to modules within the 'src' directory
-    # Ensure the parent directory of 'src' is discoverable if running from elsewhere,
-    # though running via `python -m src.maskbench` handles this.
-    # sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..")) # Usually not needed if installed/run as module
-
-    # Imports specific to maskbench runner setup
-    try:
-        from src.maskbench.src.runner import (
-            setup_argparse,
-            get_output,
-            get_files,
-            get_engine,
-        )
-    except ImportError:
-        print(
-            "Error: Could not import runner components. "
-            "Ensure maskbench is installed correctly or PYTHONPATH is set.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    # Use the globally defined base command
-    current_base_cmd = BASE_CMD[:]
-    parser = setup_argparse()
-    args = parser.parse_args()
-
-    # --- Setup based on parsed arguments ---
-    engine = get_engine(args)
-    output_path = get_output(args)
-    initial_file_list = get_files(args)
-
-    if not initial_file_list:
-        print(
-            "Error: No input files found matching the provided arguments.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    # Construct the final base command by adding arguments passed to this script
-    # Exclude the input file paths themselves from being passed as general args
-    args_to_pass_to_runner = [arg for arg in sys.argv[1:] if arg not in args.files]
-    current_base_cmd.extend(args_to_pass_to_runner)
-
-    # --- Log Run Information ---
-    chunk_size = args.chunk_size if hasattr(args, "chunk_size") else 100
-    time_limit = args.time_limit if hasattr(args, "time_limit") else 3600
-    mem_limit = args.mem_limit if hasattr(args, "mem_limit") else 16
-    num_threads = args.num_threads if hasattr(args, "num_threads") else 40
-    info = (
-        f"{len(initial_file_list)} files | "
-        f"Timeout: {time_limit}s | Memory: {mem_limit}GB | "
-        f"Output: {output_path} | Threads: {num_threads} | "
-        f"ChunkSize: {chunk_size} | "
-        f"BaseCmd: {' '.join(map(repr, current_base_cmd))}"
-    )
-
-    print(info, file=sys.stderr)
-
-    # Ensure output directory exists
-    os.makedirs(output_path, exist_ok=True)
-
-    # Write metadata about the run
-    meta_file_path = os.path.join(output_path, "meta.txt")
-    try:
-        with open(meta_file_path, "w", encoding="utf-8") as meta:
-            json.dump(
-                {
-                    "engine_id": engine.get_id(),
-                    "engine_name": engine.get_name(),
-                    "engine_module": engine.get_module(),
-                    "engine_module_version": engine.get_version(),
-                    "base_command": current_base_cmd,
-                    "run_info": info,
-                },
-                meta,
-                indent=2,
-            )
-    except IOError as e:
-        print(f"Error writing meta file {meta_file_path}: {e}", file=sys.stderr)
-        raise e
-
-    # --- Start Processing ---
-    process_files_in_threads(
-        initial_file_list=initial_file_list,
-        base_cmd=current_base_cmd,
-        output_path=output_path,
-        thread_count=num_threads,
-        chunk_size=chunk_size,
-    )
+    # Final newline after progress bar
+    print()
+    total_time = time.monotonic() - t0
+    print(f"Completed processing {num_processed}/{num_all_files} files in {total_time:.2f}s")
 
 
 if __name__ == "__main__":
-    main()
+    sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+
+    from src.maskbench.src.runner import setup_argparse, get_output, get_files, get_engine
+
+    parser = setup_argparse()
+    args = parser.parse_args()
+
+    engine = get_engine(args)
+    output_path = get_output(args)
+
+    file_list = get_files(args)
+    if not file_list:
+        raise Exception("No files found")
+
+    args_to_pass = [a for a in sys.argv[1:] if a not in args.files]
+    cmd += args_to_pass
+
+    info = f"{len(file_list)} files, timeout {args.time_limit}s, memory {args.mem_limit}GB, "
+    info += f"output {output_path}; {args.num_threads} threads; chunk size {args.chunk_size}; cmd: {' '.join(cmd)}"
+
+    print(info, file=sys.stderr)
+
+    os.makedirs(output_path, exist_ok=True)
+    with open(os.path.join(output_path, "meta.txt"), "w") as meta:
+        meta.write(
+            json.dumps(
+                {
+                    "id": engine.get_id(),
+                    "name": engine.get_name(),
+                    "module": engine.get_module(),
+                    "module_version": engine.get_version(),
+                    "cmd": cmd,
+                    "info": info,
+                },
+                indent=2,
+            )
+        )
+
+    process_files_in_threads(file_list, thread_count=args.num_threads, chunk_size=args.chunk_size)
