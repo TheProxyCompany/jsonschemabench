@@ -163,7 +163,7 @@ def setup_argparse():
     parser.add_argument(
         "--tokenizer",
         type=str,
-        default="unsloth/Meta-Llama-3.1-8B-Instruct",
+        default="unsloth/Llama-3.2-1B",
         help="Tokenizer model ID",
     )
 
@@ -298,8 +298,8 @@ def main():
     output_path = get_output(args)
 
     engine.tokenizer = AutoTokenizer.from_pretrained(
-        engine.tokenizer_model_id
-    )  # type: ignore
+        engine.tokenizer_model_id, trust_remote_code=True
+    )
 
     engine.init()
 

@@ -23,12 +23,15 @@ def run_cmd(file_list: list[str]):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            check=False,
+            check=True,
         )
         log_entry += f"{result.stderr}{result.stdout}\nExit code: {result.returncode}\n"
-    except Exception as e:
-        log_entry += f"Error running command: {e}\n"
-    append_to_log(log_entry)
+    except subprocess.CalledProcessError as e:
+        stderr = e.stderr
+        log_entry += f"Error running command:\n{command}\n{stderr}\n"
+        raise Exception(f"Error running command:\n{command}\n{stderr}\n")
+    finally:
+        append_to_log(log_entry)
 
 
 def append_to_log(entry: str):
@@ -299,7 +302,9 @@ if __name__ == "__main__":
     try:
         chunk_size = max(args.chunk_size, int(len(file_list) / (args.num_threads * 2)))
         process_files_in_threads(
-            file_list, thread_count=args.num_threads, chunk_size=chunk_size
+            file_list,
+            thread_count=args.num_threads,
+            chunk_size=chunk_size,
         )
     except KeyboardInterrupt:
         # Make sure cursor is visible if user interrupts
