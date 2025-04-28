@@ -32,17 +32,13 @@ if ! groups $USER | grep &>/dev/null '\bdocker\b'; then
 fi
 echo "--- Docker user group check complete ---"
 
-# --- Check for SSH Agent ---
-echo "--- Checking for SSH Agent for private repo access during build ---"
+# Check SSH Agent availability
+echo "--- Checking SSH Agent status ---"
 if [ -z "$SSH_AUTH_SOCK" ]; then
-    echo "!!! ERROR: SSH_AUTH_SOCK is not set."
-    echo "!!! Please start your SSH agent (e.g., 'eval \$(ssh-agent -s)')"
-    echo "!!! and add your GitHub SSH key (e.g., 'ssh-add ~/.ssh/your_github_key')"
-    echo "!!! BEFORE running this script."
-    exit 1
+    eval $(ssh-agent -s)
+    echo "SSH agent started. Please load your GitHub SSH key."
 else
-    echo "SSH Agent socket found at $SSH_AUTH_SOCK."
-    echo "Ensure the correct key for github.com/TheProxyCompany/pse_core is loaded in this agent."
+    echo "SSH Agent active at $SSH_AUTH_SOCK"
 fi
 echo "--- SSH Agent check complete ---"
 
