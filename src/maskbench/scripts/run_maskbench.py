@@ -93,10 +93,10 @@ def update_progress(num_processed, num_all_files, num_pending, t0, active_count=
 
     # Format the progress line with ample padding
     status = f"\r[{bar}] {effective_processed}/{num_all_files} ({min(perc_done, 100.0):.1f}%) | Threads: {active_count} | Pending: {num_pending} | ETA: {eta_str:<13} | Elapsed: {elapsed_str}"
-    
+
     # Add sufficient padding to ensure cursor is away from text and ANSI escape to hide cursor
     status += " " * 20 + "\033[?25l"
-    
+
     # Acquire lock to prevent output garbling
     with print_lock:
         sys.stdout.write(status)
@@ -128,7 +128,8 @@ def process_files_in_threads(file_list: list[str], thread_count=40, chunk_size=1
         print("All files processed already.")
         return
 
-    thread_count = min(thread_count, len(file_list))
+    cpu_count = os.cpu_count() or 1
+    thread_count = min(thread_count, len(file_list), cpu_count)
     print(f"Using {thread_count} threads with chunk size {chunk_size}")
 
     # Initialize progress display
@@ -192,7 +193,7 @@ def process_files_in_threads(file_list: list[str], thread_count=40, chunk_size=1
     with print_lock:
         sys.stdout.write("\r\033[?25h\n")  # Show cursor and move to next line
         sys.stdout.flush()
-    
+
     total_time = time.monotonic() - t0
 
     # Use the same formatting function for consistency
