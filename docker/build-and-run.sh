@@ -76,7 +76,7 @@ function show_help() {
     echo "Options:"
     echo "  -t, --threads NUM     Number of threads (default: 16)"
     echo "  -c, --chunk NUM       Chunk size (default: 100)"
-    echo "  -d, --dataset PATH    Dataset path relative to data/ (default: MaskBench/)"
+    echo "  -d, --dataset PATH    Dataset path relative to data/ (default: Maskbench/)"
     echo "  -e, --engine NAME     Engine to use (default: pse, options: pse, xgr, llg, outlines)"
     echo "  -h, --help            Show this help message"
     echo ""
@@ -106,10 +106,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         -e|--engine)
             ENGINE="$2"
-            shift 2
-            ;;
-        -m|--max-files)
-            MAX_FILES="$2"
             shift 2
             ;;
         -h|--help)

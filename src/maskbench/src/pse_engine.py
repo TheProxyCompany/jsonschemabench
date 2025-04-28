@@ -26,11 +26,9 @@ class PSEEngine(Engine):
         self.pse.reset()
 
     def compute_mask(self):
-        pass
-        # return self.pse.compute_token_mask(self.vocab_size)
+        return self.pse.compute_token_mask(self.vocab_size)
 
     def commit_token(self, t: int) -> bool:
-        return True
-        # self.pse.consume(t, token_healing=False)
-        # result = len(self.pse.steppers) > 0
-        # return result
+        self.pse.consume(t, token_healing=False)
+        result = len(self.pse.steppers) > 0
+        return result
