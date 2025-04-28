@@ -63,7 +63,7 @@ DOCKER_BUILDKIT=1 \
 docker build \
     --build-arg INSTALL_DEV_BRANCH=$SSH_ENABLED \
     --ssh default \
-    --build-arg CACHEBUST=$(date +%s) \
+    --build-arg CACHEBUST=`git rev-parse ${GITHUB_REF}` \
     -t maskbench-env:private-latest \
     -f docker/Dockerfile .
 echo "--- Docker image build complete"
