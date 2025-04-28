@@ -31,5 +31,4 @@ tmp/
 img/
 data/
 
-[tool.setuptools.packages.find]
-where = ["src"]
+

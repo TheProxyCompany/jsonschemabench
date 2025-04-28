@@ -20,3 +20,5 @@ perf.data.old
 *.lock
 .venv
 .lock
+
+benchmark_results-*
