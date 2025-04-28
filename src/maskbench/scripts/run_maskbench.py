@@ -308,11 +308,15 @@ def main():
     current_base_cmd.extend(args_to_pass_to_runner)
 
     # --- Log Run Information ---
+    chunk_size = args.chunk_size if hasattr(args, "chunk_size") else 100
+    time_limit = args.time_limit if hasattr(args, "time_limit") else 3600
+    mem_limit = args.mem_limit if hasattr(args, "mem_limit") else 16
+    num_threads = args.num_threads if hasattr(args, "num_threads") else 40
     info = (
         f"{len(initial_file_list)} files | "
-        f"Timeout: {args.time_limit}s | Memory: {args.mem_limit}GB | "
-        f"Output: {output_path} | Threads: {args.num_threads} | "
-        f"ChunkSize: {args.chunk_size} | "  # Assuming chunk size arg exists or using default
+        f"Timeout: {time_limit}s | Memory: {mem_limit}GB | "
+        f"Output: {output_path} | Threads: {num_threads} | "
+        f"ChunkSize: {chunk_size} | "
         f"BaseCmd: {' '.join(map(repr, current_base_cmd))}"
     )
 
@@ -339,17 +343,15 @@ def main():
             )
     except IOError as e:
         print(f"Error writing meta file {meta_file_path}: {e}", file=sys.stderr)
-        # Decide if this is critical enough to exit
+        raise e
 
     # --- Start Processing ---
     process_files_in_threads(
         initial_file_list=initial_file_list,
         base_cmd=current_base_cmd,
         output_path=output_path,
-        thread_count=args.num_threads,
-        chunk_size=args.chunk_size
-        if hasattr(args, "chunk_size")
-        else 100,  # Use arg or default
+        thread_count=num_threads,
+        chunk_size=chunk_size,
     )
 
 
