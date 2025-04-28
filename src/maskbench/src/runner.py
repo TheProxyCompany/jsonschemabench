@@ -178,7 +178,7 @@ def setup_argparse():
     parser.add_argument(
         "--num-threads", type=int, default=defl_cpu, help="Number of threads to run"
     )
-    
+
     parser.add_argument(
         "--chunk-size", type=int, default=100, help="Number of files to process per batch (for orchestrator)"
     )
@@ -265,7 +265,7 @@ def get_files(args):
                 # Try appending /*.json if the glob didn't match anything
                 json_files = glob.glob(os.path.join(arg, "*.json"))
             files.extend(json_files)
-    
+
     # Remove any duplicates while preserving order
     unique_files = []
     seen = set()
@@ -273,7 +273,7 @@ def get_files(args):
         if file not in seen:
             seen.add(file)
             unique_files.append(file)
-    
+
     return unique_files
 
 
@@ -308,13 +308,6 @@ def main():
     random.shuffle(files)
 
     os.makedirs(output_path, exist_ok=True)
-
-    # rely on default SIGALRM handler (terminates the process)
-    # def timeout_handler(signum, frame):
-    #     print(f"Timeout ({time_limit_s}s). Terminating...", file=sys.stderr)
-    #     os.kill(os.getpid(), signal.SIGKILL)
-
-    # signal.signal(signal.SIGALRM, timeout_handler)
 
     for f in files:
         signal.alarm(time_limit_s)
