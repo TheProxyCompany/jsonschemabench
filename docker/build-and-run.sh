@@ -1,14 +1,12 @@
 #!/bin/bash
 set -e
 
-echo "--- Checking if tmp directory exists ---"
 if [ ! -d "tmp" ]; then
-    echo "--- Creating temporary directory ---"
+    echo "--- Creating temporary directory"
     mkdir -p "tmp"
-    echo "--- Temporary directory created ---"
+    echo "--- Temporary directory created"
 fi
 
-echo "--- Ensuring Docker is installed and user is in docker group ---"
 # Check if Docker is already installed
 if ! command -v docker &> /dev/null; then
     echo "Docker not found. Installing Docker..."
@@ -28,14 +26,10 @@ if ! command -v docker &> /dev/null; then
     sudo usermod -aG docker $USER
     echo "Docker installation complete. You MUST log out and log back in for group changes to take effect before running this script again."
     exit 1 # Force exit so user logs out/in
-else
-    echo "Docker is installed."
 fi
 
 # Check if we're on macOS (which doesn't use the docker group mechanism)
-if [[ "$(uname)" == "Darwin" ]]; then
-    echo "Running on macOS - docker group check not applicable"
-else
+if ! [[ "$(uname)" == "Darwin" ]]; then
     # Check group membership again (important after potential installation)
     if ! id -nG $USER | grep -qw "docker"; then
         echo "User $USER is not in the docker group. Adding user to docker group..."
@@ -49,10 +43,8 @@ else
         fi
     fi
 fi
-echo "--- Docker user group check complete ---"
 
 # Check SSH Agent availability
-echo "--- Checking SSH Agent status ---"
 SSH_ENABLED=false
 
 if [ -z "$SSH_AUTH_SOCK" ]; then
@@ -63,17 +55,17 @@ else
     echo "SSH Agent active at $SSH_AUTH_SOCK. Ensure the correct key for GitHub is loaded."
     SSH_ENABLED=true
 fi
-echo "--- SSH Agent check complete ---"
+echo "--- SSH Agent check complete"
 
 # --- Build the Docker image ---
-echo "--- Building Docker image (maskbench-env:private-latest) ---"
+echo "--- Building Docker image"
 DOCKER_BUILDKIT=1 \
 docker build \
     --build-arg INSTALL_DEV_BRANCH=$SSH_ENABLED \
     --ssh default \
     -t maskbench-env:private-latest \
     -f docker/Dockerfile .
-echo "--- Docker image build complete ---"
+echo "--- Docker image build complete"
 
 
 # Display usage
