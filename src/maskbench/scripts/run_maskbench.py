@@ -288,7 +288,8 @@ if __name__ == "__main__":
         )
 
     try:
-        process_files_in_threads(file_list, thread_count=args.num_threads, chunk_size=args.chunk_size)
+        chunk_size = max(args.chunk_size, int(len(file_list) / (args.num_threads * 2)))
+        process_files_in_threads(file_list, thread_count=args.num_threads, chunk_size=chunk_size)
     except KeyboardInterrupt:
         # Make sure cursor is visible if user interrupts
         sys.stdout.write("\r\033[?25h\n")

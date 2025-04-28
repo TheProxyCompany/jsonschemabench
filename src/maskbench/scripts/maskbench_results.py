@@ -368,7 +368,6 @@ if __name__ == "__main__":
     ents: list[dict] = []
     all_stats: list[Stats] = []
     hd = ["metric"]
-    breakpoint()
     for fld in folders:
         if quick:
             stats = Stats()
