@@ -119,6 +119,9 @@ def process_files_in_threads(file_list: list[str], thread_count=40, chunk_size=1
     num_all_files = len(file_list)
     active_threads = 0
     active_lock = Lock()
+    
+    # Use event for signaling progress monitor to stop
+    stop_event = threading.Event()
 
     t0 = time.monotonic()
 
@@ -142,7 +145,7 @@ def process_files_in_threads(file_list: list[str], thread_count=40, chunk_size=1
             active_threads += 1
 
         try:
-            while True:
+            while not stop_event.is_set():
                 files_chunk = []
                 with file_list_lock:
                     if not file_list:
@@ -164,18 +167,32 @@ def process_files_in_threads(file_list: list[str], thread_count=40, chunk_size=1
                 unprocessed_files = missing_files(files_chunk)
                 processed_here = len(files_chunk) - len(unprocessed_files)
 
-                # Update counters and progress
+                # Update counters
                 with file_list_lock:
                     num_processed += processed_here
                     file_list.extend(unprocessed_files)
-                    num_pending = len(file_list)
                     random.shuffle(file_list)
-
-                # Update progress display
-                update_progress(num_processed, num_all_files, num_pending, t0, active_threads)
         finally:
             with active_lock:
                 active_threads -= 1
+    
+    # Separate thread for continuously updating the progress display
+    def progress_monitor():
+        while not stop_event.is_set():
+            with file_list_lock:
+                pending_count = len(file_list)
+            
+            with active_lock:
+                current_active = active_threads
+                
+            # Update progress every 0.2 seconds - fast enough to appear live without
+            # consuming too many resources
+            update_progress(num_processed, num_all_files, pending_count, t0, current_active)
+            time.sleep(0.2)
+            
+            # Check if processing is done
+            if current_active == 0 and pending_count == 0:
+                break
 
     # Start worker threads
     threads = []
@@ -184,10 +201,24 @@ def process_files_in_threads(file_list: list[str], thread_count=40, chunk_size=1
         thread.daemon = True
         threads.append(thread)
         thread.start()
+        
+    # Start progress monitor thread
+    monitor_thread = threading.Thread(target=progress_monitor)
+    monitor_thread.daemon = True
+    monitor_thread.start()
 
-    # Wait for all threads to complete
-    for thread in threads:
-        thread.join()
+    try:
+        # Wait for all worker threads to complete
+        for thread in threads:
+            thread.join()
+            
+        # Signal the monitor to stop and wait for it
+        stop_event.set()
+        monitor_thread.join()
+    except:
+        # Ensure the stop event is set if there's an exception
+        stop_event.set()
+        raise
 
     # Final newline after progress bar and restore cursor visibility
     with print_lock:
