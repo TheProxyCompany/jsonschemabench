@@ -47,7 +47,7 @@ ARG INSTALL_DEV_BRANCH="false"
 
 RUN --mount=type=ssh \
     if [ "$INSTALL_DEV_BRANCH" = "true" ]; then \
-        echo "Installing pse-core and pse from 4.1 branches (requires SSH access)..." && \
+        echo "Installing pse-core and pse from dev branches (requires SSH access)..." && \
         # Configure SSH access within this step
         mkdir -p ~/.ssh && chmod 700 ~/.ssh && \
         ssh-keyscan github.com >> ~/.ssh/known_hosts && \

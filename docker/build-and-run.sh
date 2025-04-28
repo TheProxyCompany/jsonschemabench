@@ -1,6 +1,13 @@
 #!/bin/bash
 set -e
 
+echo "--- Checking if tmp directory exists ---"
+if [ ! -d "tmp" ]; then
+    echo "--- Creating temporary directory ---"
+    mkdir -p "tmp"
+    echo "--- Temporary directory created ---"
+fi
+
 echo "--- Ensuring Docker is installed and user is in docker group ---"
 # Check if Docker is already installed
 if ! command -v docker &> /dev/null; then
@@ -215,55 +222,18 @@ mkdir -p "$RESULTS_DIR/plots"
 docker run -it --rm \
    -v "$PWD/tmp:/app/tmp" \
    -v "$PWD/$RESULTS_DIR/plots:/app/plots" \
+   -e PYTHONDONTWRITEBYTECODE=1 \
+   -e MPLBACKEND=Agg \
    maskbench-env:private-latest \
-   bash -c "pip install matplotlib numpy --no-cache-dir && MPLBACKEND=Agg python -m src.maskbench.scripts.maskbench_results tmp/$COMPARISON_DIR/pse-results tmp/$COMPARISON_DIR/llg-results"
+   python -m src.maskbench.scripts.maskbench_results \
+     tmp/$COMPARISON_DIR/pse-results \
+     tmp/$COMPARISON_DIR/llg-results
 
 # Copy results to the persistent location
-echo "--- Copying additional results to persistent location ---"
 cp "tmp/$COMPARISON_DIR/pse-results/stats.txt" "$RESULTS_DIR/pse-stats.json" 2>/dev/null || true
 cp "tmp/$COMPARISON_DIR/llg-results/stats.txt" "$RESULTS_DIR/llg-stats.json" 2>/dev/null || true
 cp "tmp/$COMPARISON_DIR/pse-results/entries.txt" "$RESULTS_DIR/pse-entries.json" 2>/dev/null || true
 cp "tmp/$COMPARISON_DIR/llg-results/entries.txt" "$RESULTS_DIR/llg-entries.json" 2>/dev/null || true
 
-# Check if plots were generated successfully
-if [ -d "$RESULTS_DIR/plots" ] && [ "$(ls -A "$RESULTS_DIR/plots" 2>/dev/null)" ]; then
-    echo "--- Plots generated successfully ---"
-else
-    echo "Warning: No plots were generated in $RESULTS_DIR/plots"
-fi
-
-# Generate a simple markdown report
-cat > "$RESULTS_DIR/README.md" << EOF
-# JSON Schema Validation Engine Benchmark Results
-
-Benchmark run on: $(date)
-
-## Configuration
-- Dataset: $DATASET
-- Thread count: $THREADS
-- Chunk size: $CHUNK_SIZE
-
-## Results
-
-The following charts show a performance comparison between PSE and LLG engines:
-
-### Time Between Masks (TBM)
-![TBM Comparison](./plots/tbm.png)
-
-### Time To First Mask (TTFM)
-![TTFM Comparison](./plots/ttfm.png)
-
-### Combined Performance
-![Combined Performance](./plots/hero.png)
-
-## Raw Data
-The raw benchmark data is available in the JSON files in this directory:
-- pse-stats.json: PSE engine statistics
-- llg-stats.json: LLG engine statistics
-- pse-entries.json: PSE engine detailed metrics
-- llg-entries.json: LLG engine detailed metrics
-EOF
-
-echo "--- Results generation completed ---"
 echo "Comparison results and charts are available in the '$RESULTS_DIR' directory"
 echo "--- Container exited ---"

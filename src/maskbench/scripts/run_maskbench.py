@@ -89,7 +89,7 @@ def update_progress(num_processed, num_all_files, num_pending, t0, active_count=
     # Create progress bar with bounds checking
     bar_length = 30
     filled_length = min(bar_length, int(bar_length * perc_done / 100))
-    bar = '█' * filled_length + '░' * (bar_length - filled_length)
+    bar = "█" * filled_length + "░" * (bar_length - filled_length)
 
     # Format the progress line with ample padding
     status = f"\r[{bar}] {effective_processed}/{num_all_files} ({min(perc_done, 100.0):.1f}%) | Threads: {active_count} | Pending: {num_pending} | ETA: {eta_str:<13} | Elapsed: {elapsed_str}"
@@ -187,7 +187,9 @@ def process_files_in_threads(file_list: list[str], thread_count=40, chunk_size=1
 
             # Update progress every 0.2 seconds - fast enough to appear live without
             # consuming too many resources
-            update_progress(num_processed, num_all_files, pending_count, t0, current_active)
+            update_progress(
+                num_processed, num_all_files, pending_count, t0, current_active
+            )
             time.sleep(0.2)
 
             # Check if processing is done
@@ -241,13 +243,20 @@ def process_files_in_threads(file_list: list[str], thread_count=40, chunk_size=1
             return f"{hours}h {minutes}m"
 
     formatted_time = format_time(total_time)
-    print(f"Completed processing {num_processed}/{num_all_files} files in {formatted_time}")
+    print(
+        f"Completed processing {num_processed}/{num_all_files} files in {formatted_time}"
+    )
 
 
 if __name__ == "__main__":
     sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-    from src.maskbench.src.runner import setup_argparse, get_output, get_files, get_engine
+    from src.maskbench.src.runner import (
+        setup_argparse,
+        get_output,
+        get_files,
+        get_engine,
+    )
 
     parser = setup_argparse()
     args = parser.parse_args()
@@ -289,7 +298,9 @@ if __name__ == "__main__":
 
     try:
         chunk_size = max(args.chunk_size, int(len(file_list) / (args.num_threads * 2)))
-        process_files_in_threads(file_list, thread_count=args.num_threads, chunk_size=chunk_size)
+        process_files_in_threads(
+            file_list, thread_count=args.num_threads, chunk_size=chunk_size
+        )
     except KeyboardInterrupt:
         # Make sure cursor is visible if user interrupts
         sys.stdout.write("\r\033[?25h\n")
