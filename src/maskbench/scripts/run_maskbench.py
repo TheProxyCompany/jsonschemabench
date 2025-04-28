@@ -166,22 +166,11 @@ def process_chunks_in_threads(file_list: list[str], thread_count: int, chunk_siz
             with progress_lock:
                 num_processed_files += result
         except Exception as e:
-            print(f"Error processing chunk: {e}", file=sys.stderr)
-            traceback.print_exc()
-            sys.exit(1)
-
-        update_progress(
-            num_processed_files,
-            num_all_files,
-            num_all_files - num_processed_files,
-            t0,
-            thread_count,
-        )
-
-    stop_event.set()
-    thread.join()
-    # Final progress update after loop completion
-    update_progress(num_processed_files, num_all_files, 0, t0, 0)
+            print(f"\n{e}")
+            break
+        finally:
+            stop_event.set()
+            thread.join()
 
     # Final newline after progress bar and restore cursor visibility
     sys.stdout.write("\r\033[?25h\n")
@@ -225,8 +214,9 @@ if __name__ == "__main__":
             "unknown",
         )
 
-    info = f"{len(file_list)} files, chunk_size {args.chunk_size}, timeout {args.time_limit}s/file, mem {args.mem_limit}GB, "
-    info += f"output {output_path}; {args.num_threads} workers;"
+    info = f"{len(file_list)} files, "
+    info += f"timeout {args.time_limit}s/file, "
+    info += f"memory limit {args.mem_limit}GB"
     print(info)
 
     meta_file_path = os.path.join(output_path, "meta.txt")  # Or meta.json

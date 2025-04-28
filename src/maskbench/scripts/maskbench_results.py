@@ -176,37 +176,60 @@ def main(folder: str):
 
     entries = {}
     all_masks_us.sort()
-    entries["TBM avg"] = sum(all_masks_us) // len(all_masks_us)
-    for p in ps:
-        entries[f"TBM p{p}"] = get_p(all_masks_us, p)
+
+    if all_masks_us:
+        entries["TBM avg"] = sum(all_masks_us) // len(all_masks_us)
+        for p in ps:
+            entries[f"TBM p{p}"] = get_p(all_masks_us, p)
+    else:
+        entries["TBM avg"] = 0
+        for p in ps:
+            entries[f"TBM p{p}"] = 0
+
     ttfm_us += [900_000_000] * stats.num_timeouts
     ttfm_us.sort()
-    entries["TTFM avg"] = sum(ttfm_us) // len(ttfm_us)
-    for p in ps:
-        entries[f"TTFM p{p}"] = get_p(ttfm_us, p)
+
+    if ttfm_us:
+        entries["TTFM avg"] = sum(ttfm_us) // len(ttfm_us)
+        for p in ps:
+            entries[f"TTFM p{p}"] = get_p(ttfm_us, p)
+    else:
+        entries["TTFM avg"] = 0
+        for p in ps:
+            entries[f"TTFM p{p}"] = 0 # Or perhaps None
+
     entries["tokens"] = stats.num_tokens
     entries["schemas"] = stats.num_schemas
     entries["passing"] = stats.num_schemas_ok
-    # entries["crashes"] = stats.num_crashes_or_timeouts
+    entries["crashes"] = stats.num_crashes_or_timeouts
     entries["compile error"] = stats.num_compilation_errors
     entries["segmentation fault"] = stats.num_segv
     entries["out of memory"] = stats.num_abort
     entries["timeout"] = stats.num_timeouts
     entries["validation error"] = stats.num_validation_errors
     entries["invalidation error"] = stats.num_invalidation_errors
-    # print(json.dumps(entries, indent=2))
     with open(folder + "/entries.txt", "w") as f:
         f.write(json.dumps(entries, indent=2))
-    # print(f"{'ttfm_p' + str(p):10}, {ttfm_us[int(len(ttfm_us) * p / 100)]}")
 
     num_masks = sum(histogram_num)
     h_csv = "above us,frac\n"
-    for i in range(10)[1:]:
-        frac = sum(histogram_num[i:]) * 100 / num_masks
-        h_csv += f"{us_to_str(10**i):10}"
-        h_csv += ","
-        h_csv += f"{frac:1.15}"
-        h_csv += "\n"
+    # Ensure num_masks is not zero before calculating fractions
+    if num_masks > 0:
+        for i in range(1, 10): # range(10)[1:] is equivalent to range(1, 10)
+            frac = sum(histogram_num[i:]) * 100.0 / num_masks # Use float division
+            h_csv += f"{us_to_str(10**i):10}"
+            h_csv += ","
+            # Ensure frac is formatted correctly, even if very small
+            h_csv += f"{frac:.15f}" # Use standard float formatting
+            h_csv += "\n"
+    else:
+        # Handle case where there are no masks (e.g., all errors)
+        for i in range(1, 10):
+             h_csv += f"{us_to_str(10**i):10}"
+             h_csv += ","
+             h_csv += f"{0.0:.15f}" # Fraction is zero
+             h_csv += "\n"
+
     with open(folder + "/histogram.csv", "w") as f:
         f.write(h_csv)
 
@@ -431,6 +454,9 @@ if __name__ == "__main__":
 
     positions = list(plot_colors.keys())
     ents.sort(key=lambda e: positions.index(e["meta"]["id"]))
+    if len(ents) == 0:
+        print("Warning: No data available for plotting")
+        exit(1)
 
     hd += [e["meta"]["name"] for e in ents]
     rows = [hd]
