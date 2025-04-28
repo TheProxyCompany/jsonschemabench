@@ -351,7 +351,7 @@ def plot_metrics(
         safe_values = [max(v, 0.1) for v in tbm_values]
 
         background_color = custom_colors[i % len(custom_colors)]
-        foreground_color = custom_text_colors[i % len(custom_text_colors)]
+        # foreground_color = custom_text_colors[i % len(custom_text_colors)]
 
         bars = ax.barh(
             pos,
@@ -380,33 +380,6 @@ def plot_metrics(
                 rotation=0,
                 color=background_color,
             )
-            try:
-                all_values_for_key = [values[engine][j] for engine in labels]
-                fastest = max(min(all_values_for_key), 0.1)  # Avoid division by zero
-                factor = value / fastest
-
-                if factor > 1.1:  # Only show factor if there's a meaningful difference
-                    speedup_text = f"{factor:.1f}x"
-                    text_color = foreground_color
-                    # If bar is too narrow, position text at the start of the bar
-                    if bar.get_width() < 50:
-                        text_pos = bar.get_width() + 5
-                        text_color = background_color
-                    else:
-                        text_pos = bar.get_width() / 2
-
-                    ax.text(
-                        text_pos,
-                        bar.get_y() + bar.get_height() / 2,
-                        speedup_text,
-                        ha="center",
-                        va="center",
-                        fontsize=8,
-                        rotation=0,
-                        color=text_color,
-                    )
-            except (ZeroDivisionError, ValueError) as e:
-                print(f"Warning: Could not compute speed factor: {e}")
 
     # Configure axes
     ax.set_xscale("log", base=10)
@@ -414,20 +387,20 @@ def plot_metrics(
     ax.set_yticklabels(keys, rotation=45, ha="right")
     ax.set_xlabel("Time (log scale, microseconds)")
     ax.set_title(title)
-    ax.legend([engine_name for _, engine_name in engine_list], loc="upper right")
+    ax.legend([engine_name for _, engine_name in engine_list], loc="best")
 
     # Adjust y-axis limit to accommodate legend
     current_ylim_bottom, current_ylim_top = ax.get_ylim()
     ax.set_ylim(
         bottom=current_ylim_bottom,
-        top=current_ylim_top + 0.3,
+        top=current_ylim_top + (0.1 * len(engine_list)),
     )
 
     # Adjust x-axis limit to accommodate text annotations
     current_xlim_left, current_xlim_right = ax.get_xlim()
     ax.set_xlim(
         left=current_xlim_left,
-        right=current_xlim_right * 1.1,
+        right=current_xlim_right * 1.15,
     )
 
     plt.tight_layout()
@@ -441,26 +414,17 @@ def plot_metrics(
 
 
 if __name__ == "__main__":
-    folders = sys.argv[1:]
-    quick = False
-    if len(folders) > 0 and folders[0] == "-q":
-        quick = True
-        folders = folders[1:]
+    folder = sys.argv[1]
 
-    if not folders:
-        metas = glob.glob("tmp/*/meta.txt")
-        folders = [os.path.dirname(m) for m in metas]
+    metas = glob.glob(folder + "/*/meta.txt")
+    folders = [os.path.dirname(m) for m in metas]
 
     ents: list[dict] = []
     all_stats: list[Stats] = []
     hd = ["metric"]
+
     for fld in folders:
-        if quick:
-            stats = Stats()
-            stats.load_json(read_json(fld + "/stats.txt"))
-            entries = read_json(fld + "/entries.txt")
-        else:
-            stats, entries = main(fld)
+        stats, entries = main(fld)
         entries["meta"] = stats.meta
         ents.append(entries)
         all_stats.append(stats)

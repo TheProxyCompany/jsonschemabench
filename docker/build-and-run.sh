@@ -165,14 +165,13 @@ fi
 # Create output directories for comparison results and plots
 COMPARISON_DIR="comparison-$(date +%s)"
 mkdir -p "tmp/$COMPARISON_DIR"
-mkdir -p "tmp/$COMPARISON_DIR/pse-results"
-mkdir -p "tmp/$COMPARISON_DIR/llg-results"
-mkdir -p "plots"
-
 # Ensure directory permissions are correct for Docker
 chmod -R 777 "tmp/$COMPARISON_DIR"
-chmod -R 777 plots
 
+# Create a persistent results directory upfront
+RESULTS_DIR="benchmark_results-$(date +%s)"
+mkdir -p "$RESULTS_DIR"
+mkdir -p "$RESULTS_DIR/plots"
 echo "--- Running benchmark with PSE engine ---"
 docker run -it --rm \
    -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
@@ -183,7 +182,6 @@ docker run -it --rm \
      --chunk-size "$CHUNK_SIZE" \
      --output "tmp/$COMPARISON_DIR/pse-results" \
      --pse $FILES_TO_PROCESS
-
 echo "--- PSE engine benchmark completed ---"
 
 echo "--- Running benchmark with LLG engine ---"
@@ -198,98 +196,78 @@ docker run -it --rm \
      --llg $FILES_TO_PROCESS
 echo "--- LLG engine benchmark completed ---"
 
-echo "--- Running benchmark with XGR engine ---"
-docker run -it --rm \
-   -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
-   -v "$PWD/tmp:/app/tmp" \
-   maskbench-env:private-latest \
-   python -m src.maskbench.scripts.run_maskbench \
-     --num-threads "$THREADS" \
-     --chunk-size "$CHUNK_SIZE" \
-     --output "tmp/$COMPARISON_DIR/xgr-results" \
-     --xgr $FILES_TO_PROCESS
-echo "--- XGR engine benchmark completed ---"
+# echo "--- Running benchmark with XGR engine ---"
+# docker run -it --rm \
+#    -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
+#    -v "$PWD/tmp:/app/tmp" \
+#    maskbench-env:private-latest \
+#    python -m src.maskbench.scripts.run_maskbench \
+#      --num-threads "$THREADS" \
+#      --chunk-size "$CHUNK_SIZE" \
+#      --output "tmp/$COMPARISON_DIR/xgr-results" \
+#      --xgr $FILES_TO_PROCESS
+# echo "--- XGR engine benchmark completed ---"
 
-echo "--- Running benchmark with XGR-CPP engine ---"
-docker run -it --rm \
-   -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
-   -v "$PWD/tmp:/app/tmp" \
-   maskbench-env:private-latest \
-   python -m src.maskbench.scripts.run_maskbench \
-     --num-threads "$THREADS" \
-     --chunk-size "$CHUNK_SIZE" \
-     --output "tmp/$COMPARISON_DIR/xgr-cpp-results" \
-     --xgr-cpp $FILES_TO_PROCESS
-echo "--- XGR-CPP engine benchmark completed ---"
+# echo "--- Running benchmark with XGR-CPP engine ---"
+# docker run -it --rm \
+#    -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
+#    -v "$PWD/tmp:/app/tmp" \
+#    maskbench-env:private-latest \
+#    python -m src.maskbench.scripts.run_maskbench \
+#      --num-threads "$THREADS" \
+#      --chunk-size "$CHUNK_SIZE" \
+#      --output "tmp/$COMPARISON_DIR/xgr-cpp-results" \
+#      --xgr-cpp $FILES_TO_PROCESS
+# echo "--- XGR-CPP engine benchmark completed ---"
 
-echo "--- Running benchmark with XGR-Compliant engine ---"
-docker run -it --rm \
-   -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
-   -v "$PWD/tmp:/app/tmp" \
-   maskbench-env:private-latest \
-   python -m src.maskbench.scripts.run_maskbench \
-     --num-threads "$THREADS" \
-     --chunk-size "$CHUNK_SIZE" \
-     --output "tmp/$COMPARISON_DIR/xgr-compliant-results" \
-     --xgr-compliant $FILES_TO_PROCESS
-echo "--- XGR-Compliant engine benchmark completed ---"
+# echo "--- Running benchmark with Outlines engine ---"
+# docker run -it --rm \
+#    -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
+#    -v "$PWD/tmp:/app/tmp" \
+#    maskbench-env:private-latest \
+#    python -m src.maskbench.scripts.run_maskbench \
+#      --num-threads "$THREADS" \
+#      --chunk-size "$CHUNK_SIZE" \
+#      --output "tmp/$COMPARISON_DIR/outlines-results" \
+#      --outlines $FILES_TO_PROCESS
+# echo "--- Outlines engine benchmark completed ---"
 
-echo "--- Running benchmark with Outlines engine ---"
-docker run -it --rm \
-   -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
-   -v "$PWD/tmp:/app/tmp" \
-   maskbench-env:private-latest \
-   python -m src.maskbench.scripts.run_maskbench \
-     --num-threads "$THREADS" \
-     --chunk-size "$CHUNK_SIZE" \
-     --output "tmp/$COMPARISON_DIR/outlines-results" \
-     --outlines $FILES_TO_PROCESS
-echo "--- Outlines engine benchmark completed ---"
-
-echo "--- Running benchmark with LlamaCPP engine ---"
-docker run -it --rm \
-   -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
-   -v "$PWD/tmp:/app/tmp" \
-   maskbench-env:private-latest \
-   python -m src.maskbench.scripts.run_maskbench \
-     --num-threads "$THREADS" \
-     --chunk-size "$CHUNK_SIZE" \
-     --output "tmp/$COMPARISON_DIR/llamacpp-results" \
-     --llamacpp $FILES_TO_PROCESS
-echo "--- LlamaCPP engine benchmark completed ---"
+# echo "--- Running benchmark with LlamaCPP engine ---"
+# docker run -it --rm \
+#    -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
+#    -v "$PWD/tmp:/app/tmp" \
+#    maskbench-env:private-latest \
+#    python -m src.maskbench.scripts.run_maskbench \
+#      --num-threads "$THREADS" \
+#      --chunk-size "$CHUNK_SIZE" \
+#      --output "tmp/$COMPARISON_DIR/llamacpp-results" \
+#      --llamacpp $FILES_TO_PROCESS
+# echo "--- LlamaCPP engine benchmark completed ---"
 
 echo "--- Generating comparison charts and results ---"
-# Create a persistent results directory
-RESULTS_DIR="benchmark_results-$(date +%s)"
-mkdir -p "$RESULTS_DIR"
-mkdir -p "$RESULTS_DIR/plots"
-
 # Generate comparison results with matplotlib backend that works in Docker
 docker run -it --rm \
    -v "$PWD/tmp:/app/tmp" \
    -v "$PWD/$RESULTS_DIR/plots:/app/plots" \
    -e MPLBACKEND=Agg \
    maskbench-env:private-latest \
-   python -m src.maskbench.scripts.maskbench_results \
-     tmp/$COMPARISON_DIR/pse-results \
-     tmp/$COMPARISON_DIR/llg-results \
-     tmp/$COMPARISON_DIR/xgr-results \
-     tmp/$COMPARISON_DIR/xgr-cpp-results \
-     tmp/$COMPARISON_DIR/xgr-compliant-results \
-     tmp/$COMPARISON_DIR/outlines-results \
-     tmp/$COMPARISON_DIR/llamacpp-results
+   python -m src.maskbench.scripts.maskbench_results tmp/$COMPARISON_DIR
 
-# Copy results to the persistent location
+# Copy all results to the persistent location in one batch
 cp "tmp/$COMPARISON_DIR/pse-results/stats.txt" "$RESULTS_DIR/pse-stats.json" 2>/dev/null || true
-cp "tmp/$COMPARISON_DIR/llg-results/stats.txt" "$RESULTS_DIR/llg-stats.json" 2>/dev/null || true
 cp "tmp/$COMPARISON_DIR/pse-results/entries.txt" "$RESULTS_DIR/pse-entries.json" 2>/dev/null || true
+cp "tmp/$COMPARISON_DIR/llg-results/stats.txt" "$RESULTS_DIR/llg-stats.json" 2>/dev/null || true
 cp "tmp/$COMPARISON_DIR/llg-results/entries.txt" "$RESULTS_DIR/llg-entries.json" 2>/dev/null || true
-cp "tmp/$COMPARISON_DIR/xgr-results/entries.txt" "$RESULTS_DIR/xgr-entries.json" 2>/dev/null || true
-cp "tmp/$COMPARISON_DIR/xgr-cpp-results/entries.txt" "$RESULTS_DIR/xgr-cpp-entries.json" 2>/dev/null || true
-cp "tmp/$COMPARISON_DIR/xgr-compliant-results/entries.txt" "$RESULTS_DIR/xgr-compliant-entries.json" 2>/dev/null || true
-cp "tmp/$COMPARISON_DIR/outlines-results/entries.txt" "$RESULTS_DIR/outlines-entries.json" 2>/dev/null || true
-cp "tmp/$COMPARISON_DIR/llamacpp-results/entries.txt" "$RESULTS_DIR/llamacpp-entries.json" 2>/dev/null || true
+# cp "tmp/$COMPARISON_DIR/xgr-results/stats.txt" "$RESULTS_DIR/xgr-stats.json" 2>/dev/null || true
+# cp "tmp/$COMPARISON_DIR/xgr-results/entries.txt" "$RESULTS_DIR/xgr-entries.json" 2>/dev/null || true
+# cp "tmp/$COMPARISON_DIR/xgr-cpp-results/stats.txt" "$RESULTS_DIR/xgr-cpp-stats.json" 2>/dev/null || true
+# cp "tmp/$COMPARISON_DIR/xgr-cpp-results/entries.txt" "$RESULTS_DIR/xgr-cpp-entries.json" 2>/dev/null || true
+# cp "tmp/$COMPARISON_DIR/outlines-results/stats.txt" "$RESULTS_DIR/outlines-stats.json" 2>/dev/null || true
+# cp "tmp/$COMPARISON_DIR/outlines-results/entries.txt" "$RESULTS_DIR/outlines-entries.json" 2>/dev/null || true
+# cp "tmp/$COMPARISON_DIR/llamacpp-results/stats.txt" "$RESULTS_DIR/llamacpp-stats.json" 2>/dev/null || true
+# cp "tmp/$COMPARISON_DIR/llamacpp-results/entries.txt" "$RESULTS_DIR/llamacpp-entries.json" 2>/dev/null || true
 
+echo "--- Comparison charts and results generated ---"
 echo "Comparison results and charts are available in the '$RESULTS_DIR' directory"
 
 # Determine the current user and hostname for informational purposes
