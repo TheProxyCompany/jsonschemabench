@@ -87,7 +87,7 @@ function show_help() {
 THREADS=40
 CHUNK_SIZE=100  # Use larger chunk size for more efficiency
 DATASET="Maskbench/" # Default to whole benchmark directory
-ENGINE="pse"
+ENGINE="llg"
 
 # Parse options
 while [[ $# -gt 0 ]]; do
