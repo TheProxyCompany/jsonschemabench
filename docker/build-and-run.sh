@@ -168,12 +168,85 @@ else
     echo "processing files matching pattern (count determined by runner)"
 fi
 
+# Create output directories for comparison results and plots
+COMPARISON_DIR="comparison-$(date +%s)"
+mkdir -p "tmp/$COMPARISON_DIR"
+mkdir -p "plots"
+
+echo "--- Running benchmark with PSE engine ---"
 docker run -it --rm \
    -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
+   -v "$PWD/tmp:/app/tmp" \
    maskbench-env:private-latest \
    python -m src.maskbench.scripts.run_maskbench \
      --num-threads "$THREADS" \
      --chunk-size "$CHUNK_SIZE" \
-     --"$ENGINE" $FILES_TO_PROCESS
+     --output "tmp/$COMPARISON_DIR/pse-results" \
+     --pse $FILES_TO_PROCESS
 
+echo "--- PSE engine benchmark completed ---"
+
+echo "--- Running benchmark with LLG engine ---"
+docker run -it --rm \
+   -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
+   -v "$PWD/tmp:/app/tmp" \
+   maskbench-env:private-latest \
+   python -m src.maskbench.scripts.run_maskbench \
+     --num-threads "$THREADS" \
+     --chunk-size "$CHUNK_SIZE" \
+     --output "tmp/$COMPARISON_DIR/llg-results" \
+     --llg $FILES_TO_PROCESS
+
+echo "--- LLG engine benchmark completed ---"
+
+echo "--- Generating comparison charts and results ---"
+# Create a persistent results directory
+RESULTS_DIR="benchmark_results-$(date +%s)"
+mkdir -p "$RESULTS_DIR"
+mkdir -p "$RESULTS_DIR/plots"
+
+docker run -it --rm \
+   -v "$PWD/tmp:/app/tmp" \
+   -v "$PWD/plots:/app/plots" \
+   maskbench-env:private-latest \
+   python -m src.maskbench.scripts.maskbench_results "tmp/$COMPARISON_DIR/pse-results" "tmp/$COMPARISON_DIR/llg-results"
+
+# Copy the plots to a persistent location
+echo "--- Copying results to persistent location ---"
+cp -r plots/* "$RESULTS_DIR/plots/" 2>/dev/null || true
+cp "tmp/$COMPARISON_DIR/pse-results/stats.txt" "$RESULTS_DIR/pse-stats.json" 2>/dev/null || true
+cp "tmp/$COMPARISON_DIR/llg-results/stats.txt" "$RESULTS_DIR/llg-stats.json" 2>/dev/null || true
+cp "tmp/$COMPARISON_DIR/pse-results/entries.txt" "$RESULTS_DIR/pse-entries.json" 2>/dev/null || true
+cp "tmp/$COMPARISON_DIR/llg-results/entries.txt" "$RESULTS_DIR/llg-entries.json" 2>/dev/null || true
+
+# Generate a simple markdown report
+cat > "$RESULTS_DIR/README.md" << EOF
+# JSON Schema Validation Engine Benchmark Results
+
+Benchmark run on: $(date)
+
+## Configuration
+- Dataset: $DATASET
+- Thread count: $THREADS
+- Chunk size: $CHUNK_SIZE
+
+## Results
+
+The following charts show a performance comparison between PSE and LLG engines:
+
+### Time Between Masks (TBM)
+![TBM Comparison](./plots/tbm.png)
+
+### Time To First Mask (TTFM)
+![TTFM Comparison](./plots/ttfm.png)
+
+### Combined Performance
+![Combined Performance](./plots/hero.png)
+
+## Raw Data
+The raw benchmark data is available in the JSON files in this directory.
+EOF
+
+echo "--- Results generation completed ---"
+echo "Comparison results and charts are available in the '$RESULTS_DIR' directory"
 echo "--- Container exited ---"
