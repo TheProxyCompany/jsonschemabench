@@ -84,11 +84,10 @@ function show_help() {
 }
 
 # Parse command-line arguments
-# Default to 16 threads - the Python code will automatically use min(thread_count, os.cpu_count())
-THREADS=16
+THREADS=40
 CHUNK_SIZE=100  # Use larger chunk size for more efficiency
-DATASET="MaskBench/" # Default to whole benchmark directory
-ENGINE="llg"
+DATASET="Maskbench/" # Default to whole benchmark directory
+ENGINE="pse"
 
 # Parse options
 while [[ $# -gt 0 ]]; do

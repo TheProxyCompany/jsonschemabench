@@ -188,8 +188,11 @@ def process_files_in_threads(file_list: list[str], thread_count=40, chunk_size=1
     for thread in threads:
         thread.join()
 
-    # Final newline after progress bar
-    print()
+    # Final newline after progress bar and restore cursor visibility
+    with print_lock:
+        sys.stdout.write("\r\033[?25h\n")  # Show cursor and move to next line
+        sys.stdout.flush()
+    
     total_time = time.monotonic() - t0
 
     # Use the same formatting function for consistency
@@ -252,4 +255,17 @@ if __name__ == "__main__":
             )
         )
 
-    process_files_in_threads(file_list, thread_count=args.num_threads, chunk_size=args.chunk_size)
+    try:
+        process_files_in_threads(file_list, thread_count=args.num_threads, chunk_size=args.chunk_size)
+    except KeyboardInterrupt:
+        # Make sure cursor is visible if user interrupts
+        sys.stdout.write("\r\033[?25h\n")
+        sys.stdout.flush()
+        print("Process interrupted by user")
+        sys.exit(1)
+    except Exception as e:
+        # Make sure cursor is visible on error
+        sys.stdout.write("\r\033[?25h\n")
+        sys.stdout.flush()
+        print(f"Error: {e}")
+        raise
