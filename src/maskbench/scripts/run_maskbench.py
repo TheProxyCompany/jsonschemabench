@@ -51,30 +51,52 @@ def missing_files(file_list: list[str]):
 def update_progress(num_processed, num_all_files, num_pending, t0, active_count=0):
     """Update progress bar on a single line"""
     now = time.monotonic() - t0
-    perc_done = num_processed / num_all_files * 100 if num_all_files > 0 else 0
 
-    # Calculate ETA
-    if num_processed > 0:
-        est_time_left = (now / num_processed * num_all_files) - now
-        eta_min = int(est_time_left // 60)
-        eta_sec = int(est_time_left % 60)
-        eta_str = f"{eta_min}m{eta_sec:02d}s"
+    # Ensure num_processed doesn't exceed num_all_files for percentage calculation
+    effective_processed = min(num_processed, num_all_files)
+    perc_done = (effective_processed / num_all_files * 100) if num_all_files > 0 else 0
+
+    # Format time in a human-readable way
+    def format_time(seconds):
+        if seconds < 0:
+            return "0s"
+        if seconds < 60:
+            return f"{int(seconds)}s"
+        elif seconds < 3600:
+            minutes = int(seconds // 60)
+            secs = int(seconds % 60)
+            return f"{minutes}m {secs}s"
+        else:
+            hours = int(seconds // 3600)
+            minutes = int((seconds % 3600) // 60)
+            return f"{hours}h {minutes}m"
+
+    # Calculate ETA with safeguards
+    if effective_processed > 0 and effective_processed < num_all_files:
+        # Calculate time per file and multiply by remaining files
+        time_per_file = now / effective_processed
+        remaining_files = num_all_files - effective_processed
+        est_time_left = time_per_file * remaining_files
+        eta_str = format_time(est_time_left)
+    elif effective_processed >= num_all_files:
+        eta_str = "complete"
     else:
         eta_str = "calculating..."
 
     # Format elapsed time
-    elapsed_min = int(now // 60)
-    elapsed_sec = int(now % 60)
-    elapsed_str = f"{elapsed_min}m{elapsed_sec:02d}s"
+    elapsed_str = format_time(now)
 
-    # Create progress bar
+    # Create progress bar with bounds checking
     bar_length = 30
-    filled_length = int(bar_length * perc_done / 100)
+    filled_length = min(bar_length, int(bar_length * perc_done / 100))
     bar = '█' * filled_length + '░' * (bar_length - filled_length)
 
-    # Format the progress line
-    status = f"\r[{bar}] {num_processed}/{num_all_files} ({perc_done:.1f}%) | Threads: {active_count} | Pending: {num_pending} | ETA: {eta_str} | Elapsed: {elapsed_str}"
-
+    # Format the progress line with ample padding
+    status = f"\r[{bar}] {effective_processed}/{num_all_files} ({min(perc_done, 100.0):.1f}%) | Threads: {active_count} | Pending: {num_pending} | ETA: {eta_str:<13} | Elapsed: {elapsed_str}"
+    
+    # Add sufficient padding to ensure cursor is away from text and ANSI escape to hide cursor
+    status += " " * 20 + "\033[?25l"
+    
     # Acquire lock to prevent output garbling
     with print_lock:
         sys.stdout.write(status)
@@ -169,7 +191,22 @@ def process_files_in_threads(file_list: list[str], thread_count=40, chunk_size=1
     # Final newline after progress bar
     print()
     total_time = time.monotonic() - t0
-    print(f"Completed processing {num_processed}/{num_all_files} files in {total_time:.2f}s")
+
+    # Use the same formatting function for consistency
+    def format_time(seconds):
+        if seconds < 60:
+            return f"{int(seconds)}s"
+        elif seconds < 3600:
+            minutes = int(seconds // 60)
+            secs = int(seconds % 60)
+            return f"{minutes}m {secs}s"
+        else:
+            hours = int(seconds // 3600)
+            minutes = int((seconds % 3600) // 60)
+            return f"{hours}h {minutes}m"
+
+    formatted_time = format_time(total_time)
+    print(f"Completed processing {num_processed}/{num_all_files} files in {formatted_time}")
 
 
 if __name__ == "__main__":
@@ -193,7 +230,7 @@ if __name__ == "__main__":
     # Print information about source glob patterns
     src_paths = ", ".join(args.files)
     print(f"Expanded '{src_paths}' to {len(file_list)} JSON files", file=sys.stderr)
-    
+
     info = f"{len(file_list)} files, timeout {args.time_limit}s, memory {args.mem_limit}GB, "
     info += f"output {output_path}; {args.num_threads} threads; chunk size {args.chunk_size}; cmd: {' '.join(cmd)}"
 
