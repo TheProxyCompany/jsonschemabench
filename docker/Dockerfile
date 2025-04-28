@@ -26,12 +26,9 @@ WORKDIR /app
 # --- toolchain & build flags -----------------------------------------------
 ENV CC=gcc CXX=g++
 # ---------------------------------------------------------------------------
-ARG CACHEBUST=0
-
 
 # Create and set the path for the virtual environment using uv
 RUN uv venv --python 3.12
-RUN uv cache clean
 ENV PATH="/app/.venv/bin:$PATH"
 
 ARG TARGETARCH
@@ -43,6 +40,14 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
     fi && \
     CMAKE_ARGS="$CMAKE_ARGS" uv pip install --no-cache-dir "llama-cpp-python==0.3.8"
 
+
+# Copy dependency definition file and install project dependencies
+COPY pyproject.toml ./
+
+RUN uv pip install --no-cache-dir -U -e .
+
+ARG CACHEBUST=0
+RUN uv cache clean
 
 # Install specific pse-core and pse versions using SSH agent forwarding
 ARG INSTALL_DEV_BRANCH="false"
@@ -67,11 +72,6 @@ RUN --mount=type=ssh \
             exit 1; \
         fi; \
     fi
-
-# Copy dependency definition file and install project dependencies
-COPY pyproject.toml ./
-
-RUN uv pip install --no-cache-dir -e .
 
 # Copy the rest of the application code
 COPY . .
