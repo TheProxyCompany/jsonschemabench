@@ -174,6 +174,7 @@ mkdir -p "$RESULTS_DIR"
 mkdir -p "$RESULTS_DIR/plots"
 echo "--- Running benchmark with PSE engine ---"
 docker run -it --rm \
+   --user $(id -u):$(id -g) \
    -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
    -v "$PWD/tmp:/app/tmp" \
    maskbench-env:private-latest \
@@ -186,6 +187,7 @@ echo "--- PSE engine benchmark completed ---"
 
 echo "--- Running benchmark with LLG engine ---"
 docker run -it --rm \
+   --user $(id -u):$(id -g) \
    -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
    -v "$PWD/tmp:/app/tmp" \
    maskbench-env:private-latest \
@@ -198,6 +200,7 @@ echo "--- LLG engine benchmark completed ---"
 
 # echo "--- Running benchmark with XGR engine ---"
 # docker run -it --rm \
+#    --user $(id -u):$(id -g) \
 #    -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
 #    -v "$PWD/tmp:/app/tmp" \
 #    maskbench-env:private-latest \
@@ -210,6 +213,7 @@ echo "--- LLG engine benchmark completed ---"
 
 # echo "--- Running benchmark with XGR-CPP engine ---"
 # docker run -it --rm \
+#    --user $(id -u):$(id -g) \
 #    -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
 #    -v "$PWD/tmp:/app/tmp" \
 #    maskbench-env:private-latest \
@@ -222,6 +226,7 @@ echo "--- LLG engine benchmark completed ---"
 
 # echo "--- Running benchmark with Outlines engine ---"
 # docker run -it --rm \
+#    --user $(id -u):$(id -g) \
 #    -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
 #    -v "$PWD/tmp:/app/tmp" \
 #    maskbench-env:private-latest \
@@ -234,6 +239,7 @@ echo "--- LLG engine benchmark completed ---"
 
 # echo "--- Running benchmark with LlamaCPP engine ---"
 # docker run -it --rm \
+#    --user $(id -u):$(id -g) \
 #    -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
 #    -v "$PWD/tmp:/app/tmp" \
 #    maskbench-env:private-latest \
@@ -247,6 +253,7 @@ echo "--- LLG engine benchmark completed ---"
 echo "--- Generating comparison charts and results ---"
 # Generate comparison results with matplotlib backend that works in Docker
 docker run -it --rm \
+   --user $(id -u):$(id -g) \
    -v "$PWD/tmp:/app/tmp" \
    -v "$PWD/$RESULTS_DIR/plots:/app/plots" \
    -e MPLBACKEND=Agg \
