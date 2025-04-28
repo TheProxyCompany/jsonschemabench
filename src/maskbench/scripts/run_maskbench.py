@@ -171,6 +171,8 @@ def process_chunks_in_threads(file_list: list[str], thread_count: int, chunk_siz
         finally:
             stop_event.set()
             thread.join()
+            if num_processed_files > 0:
+                update_progress(num_processed_files, num_all_files, 0, t0, 0)
 
     # Final newline after progress bar and restore cursor visibility
     sys.stdout.write("\r\033[?25h\n")
