@@ -34,20 +34,23 @@ echo "--- Docker user group check complete ---"
 
 # Check SSH Agent availability
 echo "--- Checking SSH Agent status ---"
+SSH_ENABLED=false
+
 if [ -z "$SSH_AUTH_SOCK" ]; then
     eval $(ssh-agent -s)
     echo "SSH agent started. Please ensure your GitHub SSH key is loaded (e.g., using 'ssh-add ~/.ssh/your_key')."
+    SSH_ENABLED=true
 else
     echo "SSH Agent active at $SSH_AUTH_SOCK. Ensure the correct key for GitHub is loaded."
+    SSH_ENABLED=true
 fi
 echo "--- SSH Agent check complete ---"
 
 # --- Build the Docker image ---
 echo "--- Building Docker image (maskbench-env:private-latest) ---"
-# Ensure BuildKit is used and forward SSH agent
 DOCKER_BUILDKIT=1 \
 docker build \
-    --build-arg INSTALL_DEV_BRANCH=true `# Pass arg to Dockerfile` \
+    --build-arg INSTALL_DEV_BRANCH=$SSH_ENABLED `# Pass arg to Dockerfile` \
     --ssh default `# Use the SSH agent socket defined by SSH_AUTH_SOCK` \
     -t maskbench-env:private-latest \
     -f docker/Dockerfile . `# Specify Dockerfile location relative to repo root`
