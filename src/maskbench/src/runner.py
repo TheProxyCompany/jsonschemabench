@@ -2,7 +2,6 @@
 
 import sys
 import json
-import glob
 import os
 import random
 import time
@@ -124,24 +123,8 @@ def process_file(engine: Engine, file: str):
     return status
 
 
-class CustomHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
-    def add_argument(self, action):
-        # Suppress defaults for certain arguments
-        if action.default is not None and not isinstance(
-            action, argparse._StoreTrueAction
-        ):
-            super().add_argument(action)
-        else:
-            # Call the parent method without the default
-            action.default = argparse.SUPPRESS
-            super().add_argument(action)
-
-
 def setup_argparse():
-    parser = argparse.ArgumentParser(
-        description="Run mask computation.",
-        formatter_class=CustomHelpFormatter,
-    )
+    parser = argparse.ArgumentParser(description="Run mask computation.")
     parser.add_argument("--pse", action="store_true", help="Enable Proxy Structuring Engine")
     parser.add_argument("--xgr", action="store_true", help="Enable XGrammar")
     parser.add_argument(
@@ -176,11 +159,11 @@ def setup_argparse():
 
     defl_cpu = min(os.cpu_count() or 1, 40)
     parser.add_argument(
-        "--num-threads", type=int, default=defl_cpu, help="Number of threads to run"
+        "--num-threads", "-t", type=int, default=defl_cpu, help="Number of threads to run"
     )
 
     parser.add_argument(
-        "--chunk-size", type=int, default=100, help="Number of files to process per batch (for orchestrator)"
+        "--chunk-size", "-c", type=int, default=100, help="Number of files to process per batch (for orchestrator)"
     )
 
     parser.add_argument(
@@ -248,43 +231,10 @@ def get_output(args):
         id = get_engine(args).get_id()
         return f"tmp/out--{id}"
 
-
-def get_files(args):
-    files = []
-    for arg in args.files:
-        if arg.endswith(".json"):
-            files.append(arg)
-        elif os.path.isdir(arg):
-            # Look for JSON files in the directory (recursively if needed)
-            json_files = glob.glob(os.path.join(arg, "**/*.json"), recursive=True)
-            files.extend(json_files)
-        else:
-            # Handle glob patterns directly
-            json_files = glob.glob(arg)
-            if not json_files and not arg.endswith("/*.json"):
-                # Try appending /*.json if the glob didn't match anything
-                json_files = glob.glob(os.path.join(arg, "*.json"))
-            files.extend(json_files)
-
-    # Remove any duplicates while preserving order
-    unique_files = []
-    seen = set()
-    for file in files:
-        if file not in seen:
-            seen.add(file)
-            unique_files.append(file)
-
-    return unique_files
-
-
 def main():
     global output_path
 
-    # Set environment variable to suppress tokenizers parallelism warnings
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
     parser = setup_argparse()
-
     args = parser.parse_args()
 
     if sys.platform.startswith("linux"):
@@ -298,12 +248,13 @@ def main():
     output_path = get_output(args)
 
     engine.tokenizer = AutoTokenizer.from_pretrained(
-        engine.tokenizer_model_id, trust_remote_code=True
+        engine.tokenizer_model_id,
+        trust_remote_code=True
     )
 
     engine.init()
 
-    files = get_files(args)
+    files = args.files
     print(f"{len(files)} files, timeout {time_limit_s}s", file=sys.stderr)
     random.shuffle(files)
 

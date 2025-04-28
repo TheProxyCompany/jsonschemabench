@@ -1,320 +1,272 @@
 #!/usr/bin/env python3
+import glob
+import random
 import subprocess
 import os
-import threading
-from threading import Lock
-import random
+from threading import Event, Lock, Thread
 import sys
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import traceback
 
-output_path = "tmp/output/"
-cmd = ["python3", "-m", "src.maskbench", "--multi"]
+# --- Keep these functions mostly as they are ---
+cmd = ["python3", "-m", "src.maskbench", "--multi"]  # Base command
 log_lock = Lock()
 print_lock = Lock()
 
+def run_cmd(file_list_chunk: list[str]) -> int:
+    if not file_list_chunk:
+        return 0
 
-def run_cmd(file_list: list[str]):
-    command = cmd + file_list
-    log_entry = f"Running command: {' '.join(command)}\n"
+    command = cmd + file_list_chunk
+    processed_count_in_chunk = 0
     try:
-        result = subprocess.run(
+        chunk_timeout_s = args.time_limit * len(file_list_chunk) + 60
+        subprocess.run(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             check=True,
+            timeout=chunk_timeout_s,
         )
-        log_entry += f"{result.stderr}{result.stdout}\nExit code: {result.returncode}\n"
+        processed_count_in_chunk = len(file_list_chunk)
+    except subprocess.TimeoutExpired as e:
+        stderr = e.stderr or b""
+
+        processed_count_in_chunk = 0
+        raise TimeoutError(
+            f"Timeout processing chunk starting with {file_list_chunk[0]}"
+        ) from e
     except subprocess.CalledProcessError as e:
-        stderr = e.stderr
-        log_entry += f"Error running command:\n{command}\n{stderr}\n"
-        raise Exception(f"Error running command:\n{command}\n{stderr}\n")
-    finally:
-        append_to_log(log_entry)
+        stderr = e.stderr or ""
+        raise Exception(f"Error processing chunk:\n{stderr}") from e
+    except Exception as e:  # Catch other potential errors
+        raise Exception(f"UNEXPECTED ERROR during run_cmd: {e}") from e
 
+    return processed_count_in_chunk
 
-def append_to_log(entry: str):
-    log_file = os.path.join(output_path, "log.txt")
-    with log_lock:
-        with open(log_file, "a") as log:
-            log.write(entry + "\n")
+def get_files(file_paths: list[str]) -> list[str]:
+    # (Keep your existing get_files logic)
+    file_list = []
+    for path in file_paths:
+        if path.endswith(".json"):
+            file_list.append(path)
+        elif os.path.isdir(path):
+            json_files = glob.glob(os.path.join(path, "**/*.json"), recursive=True)
+            file_list.extend(json_files)
+    return list(set(file_list))
 
-
-def missing_files(file_list: list[str]):
-    r = [
-        f
-        for f in file_list
-        if not os.path.exists(os.path.join(output_path, os.path.basename(f)))
-    ]
-    random.shuffle(r)
-    return r
-
-
-def update_progress(num_processed, num_all_files, num_pending, t0, active_count=0):
-    """Update progress bar on a single line"""
+def update_progress(
+    num_processed: int,
+    num_all_files: int,
+    num_pending_chunks: int,
+    t0: float,
+    active_threads: int = 0,
+) -> bool:
     now = time.monotonic() - t0
-
-    # Ensure num_processed doesn't exceed num_all_files for percentage calculation
     effective_processed = min(num_processed, num_all_files)
     perc_done = (effective_processed / num_all_files * 100) if num_all_files > 0 else 0
 
-    # Format time in a human-readable way
     def format_time(seconds):
         if seconds < 0:
             return "0s"
         if seconds < 60:
             return f"{int(seconds)}s"
-        elif seconds < 3600:
-            minutes = int(seconds // 60)
-            secs = int(seconds % 60)
-            return f"{minutes}m {secs}s"
-        else:
-            hours = int(seconds // 3600)
-            minutes = int((seconds % 3600) // 60)
-            return f"{hours}h {minutes}m"
+        m, s = divmod(int(seconds), 60)
+        if m < 60:
+            return f"{m}m {s}s"
+        h, m = divmod(m, 60)
+        return f"{h}h {m}m"
 
-    # Calculate ETA with safeguards
-    if effective_processed > 0 and effective_processed < num_all_files:
-        # Calculate time per file and multiply by remaining files
+    eta_str = "--"
+
+    if effective_processed > 5 and perc_done < 99.9:
         time_per_file = now / effective_processed
         remaining_files = num_all_files - effective_processed
-        est_time_left = time_per_file * remaining_files
-        eta_str = format_time(est_time_left)
+        eta_seconds = time_per_file * remaining_files
+        eta_str = format_time(eta_seconds)
     elif effective_processed >= num_all_files:
-        eta_str = "complete"
-    else:
-        eta_str = "calculating..."
+        eta_str = "Done"
 
-    # Format elapsed time
     elapsed_str = format_time(now)
-
-    # Create progress bar with bounds checking
     bar_length = 30
     filled_length = min(bar_length, int(bar_length * perc_done / 100))
     bar = "█" * filled_length + "░" * (bar_length - filled_length)
 
-    # Format the progress line with ample padding
-    status = f"\r[{bar}] {effective_processed}/{num_all_files} ({min(perc_done, 100.0):.1f}%) | Threads: {active_count} | Pending: {num_pending} | ETA: {eta_str:<13} | Elapsed: {elapsed_str}"
+    status = f"\r[{bar}] {effective_processed}/{num_all_files} ({min(perc_done, 100.0):.1f}%) | Pending: {num_pending_chunks} | ETA: {eta_str} | Elapsed: {elapsed_str}"
+    status += " " * 10 + "\033[?25l"
 
-    # Add sufficient padding to ensure cursor is away from text and ANSI escape to hide cursor
-    status += " " * 20 + "\033[?25l"
-
-    # Acquire lock to prevent output garbling
     with print_lock:
         sys.stdout.write(status)
         sys.stdout.flush()
+    return True
 
 
-def process_files_in_threads(file_list: list[str], thread_count=40, chunk_size=100):
+# --- /End standard functions ---
+def process_chunks_in_threads(file_list: list[str], thread_count: int, chunk_size: int):
     """
-    Processes a list of files using a specified number of threads, each handling a chunk of files.
-
-    :param file_list: List of input file names.
-    :param thread_count: Number of threads to use.
-    :param chunk_size: Number of files each thread should handle in a single batch.
+    Processes files in chunks using a ThreadPoolExecutor, where each thread
+    runs a subprocess for one chunk.
     """
-    file_list_lock = Lock()
+    global output_path  # Ensure output_path is accessible
 
-    file_list0 = file_list
-    file_list = missing_files(file_list)
-    num_processed = 0
+    max_thread_count = os.cpu_count() or 1
+    thread_count = min(thread_count, max_thread_count)
+    min_files_per_thread = max(1, len(file_list) // thread_count)
+    lower_bound = max(min_files_per_thread, min(25, len(file_list)))
+    optimal_chunk_size = min(chunk_size, lower_bound) if len(file_list) > 0 else 1
+
     num_all_files = len(file_list)
-    active_threads = 0
-    active_lock = Lock()
-
-    # Use event for signaling progress monitor to stop
-    stop_event = threading.Event()
-
-    t0 = time.monotonic()
-
-    print(f"Total files to process: {num_all_files}")
-
-    if not file_list:
-        print("All files processed already.")
+    if num_all_files == 0:
+        print("No files to process.")
         return
 
-    cpu_count = os.cpu_count() or 1
-    thread_count = min(thread_count, len(file_list), cpu_count)
-    print(f"Using {thread_count} threads with chunk size {chunk_size}")
+    random.shuffle(file_list)
+    chunks = [
+        file_list[i : i + optimal_chunk_size]
+        for i in range(0, len(file_list), optimal_chunk_size)
+    ]
+    num_chunks = len(chunks)
+    num_processed_files = 0
+    progress_lock = Lock()
+    stop_event = Event()
+    t0 = time.monotonic()
 
-    # Initialize progress display
-    update_progress(0, num_all_files, len(file_list), t0, 0)
+    print(f"Total files: {num_all_files} | Chunk size: {optimal_chunk_size}")
+    print(f"Using {thread_count} workers to process {num_chunks} chunks")
 
-    def worker():
-        nonlocal file_list, num_processed, active_threads
-
-        with active_lock:
-            active_threads += 1
-
-        try:
-            while not stop_event.is_set():
-                files_chunk = []
-                with file_list_lock:
-                    if not file_list:
-                        # Check for any remaining files
-                        file_list = missing_files(file_list0)
-                    if not file_list:
-                        # No more files to process
-                        break
-
-                    # Take a chunk of files
-                    chunk = min(chunk_size, (len(file_list) // thread_count) + 20)
-                    files_chunk = file_list[:chunk]
-                    del file_list[:chunk]
-
-                # Process this chunk of files
-                run_cmd(files_chunk)
-
-                # Check which files were actually processed
-                unprocessed_files = missing_files(files_chunk)
-                processed_here = len(files_chunk) - len(unprocessed_files)
-
-                # Update counters
-                with file_list_lock:
-                    num_processed += processed_here
-                    file_list.extend(unprocessed_files)
-                    random.shuffle(file_list)
-        finally:
-            with active_lock:
-                active_threads -= 1
-
-    # Separate thread for continuously updating the progress display
     def progress_monitor():
         while not stop_event.is_set():
-            with file_list_lock:
-                pending_count = len(file_list)
+            with progress_lock:
+                pending_count = num_all_files - num_processed_files
 
-            with active_lock:
-                current_active = active_threads
-
-            # Update progress every 0.2 seconds - fast enough to appear live without
-            # consuming too many resources
             update_progress(
-                num_processed, num_all_files, pending_count, t0, current_active
+                num_processed_files,
+                num_all_files,
+                pending_count,
+                t0,
+                thread_count
             )
             time.sleep(0.2)
 
-            # Check if processing is done
-            if current_active == 0 and pending_count == 0:
+            if pending_count == 0:
                 break
 
-    # Start worker threads
-    threads = []
-    for _ in range(thread_count):
-        thread = threading.Thread(target=worker)
-        thread.daemon = True
-        threads.append(thread)
-        thread.start()
+    thread = Thread(target=progress_monitor)
+    thread.start()
 
-    # Start progress monitor thread
-    monitor_thread = threading.Thread(target=progress_monitor)
-    monitor_thread.daemon = True
-    monitor_thread.start()
+    executor = ThreadPoolExecutor(max_workers=thread_count)
+    futures = {executor.submit(run_cmd, chunk): chunk for chunk in chunks}
 
-    try:
-        # Wait for all worker threads to complete
-        for thread in threads:
-            thread.join()
+    for i, future in enumerate(as_completed(futures)):
+        try:
+            result = future.result()
+            with progress_lock:
+                num_processed_files += result
+        except Exception as e:
+            print(f"Error processing chunk: {e}", file=sys.stderr)
+            traceback.print_exc()
+            sys.exit(1)
 
-        # Signal the monitor to stop and wait for it
-        stop_event.set()
-        monitor_thread.join()
-    except:
-        # Ensure the stop event is set if there's an exception
-        stop_event.set()
-        raise
+        update_progress(
+            num_processed_files,
+            num_all_files,
+            num_all_files - num_processed_files,
+            t0,
+            thread_count,
+        )
+
+    stop_event.set()
+    thread.join()
+    # Final progress update after loop completion
+    update_progress(num_processed_files, num_all_files, 0, t0, 0)
 
     # Final newline after progress bar and restore cursor visibility
-    with print_lock:
-        sys.stdout.write("\r\033[?25h\n")  # Show cursor and move to next line
-        sys.stdout.flush()
-
-    total_time = time.monotonic() - t0
-
-    # Use the same formatting function for consistency
-    def format_time(seconds):
-        if seconds < 60:
-            return f"{int(seconds)}s"
-        elif seconds < 3600:
-            minutes = int(seconds // 60)
-            secs = int(seconds % 60)
-            return f"{minutes}m {secs}s"
-        else:
-            hours = int(seconds // 3600)
-            minutes = int((seconds % 3600) // 60)
-            return f"{hours}h {minutes}m"
-
-    formatted_time = format_time(total_time)
-    print(
-        f"Completed processing {num_processed}/{num_all_files} files in {formatted_time}"
-    )
+    sys.stdout.write("\r\033[?25h\n")
+    sys.stdout.flush()
 
 
+# --- Main Execution ---
 if __name__ == "__main__":
-    sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-
-    from src.maskbench.src.runner import (
-        setup_argparse,
-        get_output,
-        get_files,
-        get_engine,
-    )
+    from src.maskbench.src.runner import setup_argparse, get_output, get_engine
 
     parser = setup_argparse()
-    args = parser.parse_args()
+    args = parser.parse_args()  # Parse args for the orchestrator
 
-    engine = get_engine(args)
+    # Get output path *once* using the parsed args
     output_path = get_output(args)
-
-    file_list = get_files(args)
-    if not file_list:
-        raise Exception("No files found")
-
-    args_to_pass = [a for a in sys.argv[1:] if a not in args.files]
-    cmd += args_to_pass
-
-    # Print information about source glob patterns
-    src_paths = ", ".join(args.files)
-    print(f"Expanded '{src_paths}' to {len(file_list)} JSON files", file=sys.stderr)
-
-    info = f"{len(file_list)} files, timeout {args.time_limit}s, memory {args.mem_limit}GB, "
-    info += f"output {output_path}; {args.num_threads} threads; chunk size {args.chunk_size}; cmd: {' '.join(cmd)}"
-
-    print(info, file=sys.stderr)
-
     os.makedirs(output_path, exist_ok=True)
-    with open(os.path.join(output_path, "meta.txt"), "w") as meta:
-        meta.write(
-            json.dumps(
+
+    file_list = get_files(args.files)
+    if not file_list:
+        print("No input files found. Exiting.")
+        sys.exit(1)
+
+    args_to_pass_to_worker = [arg for arg in sys.argv[1:] if arg not in args.files]
+    cmd.extend(args_to_pass_to_worker)
+
+    # --- Logging Meta Information ---
+    try:
+        # Create a temporary engine instance just to get metadata if needed
+        # This still runs get_engine once in the orchestrator, but not the expensive init/tokenizer load
+        temp_engine = get_engine(args)
+        engine_id = temp_engine.get_id()
+        engine_name = temp_engine.get_name()
+        engine_module = temp_engine.get_module()
+        engine_version = temp_engine.get_version()
+    except Exception as e:
+        print(f"Warning: Could not get engine metadata: {e}", file=sys.stderr)
+        engine_id, engine_name, engine_module, engine_version = (
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown",
+        )
+
+    info = f"{len(file_list)} files, chunk_size {args.chunk_size}, timeout {args.time_limit}s/file, mem {args.mem_limit}GB, "
+    info += f"output {output_path}; {args.num_threads} workers;"
+    print(info)
+
+    meta_file_path = os.path.join(output_path, "meta.txt")  # Or meta.json
+    try:
+        with open(meta_file_path, "w", encoding="utf-8") as meta:
+            json.dump(
                 {
-                    "id": engine.get_id(),
-                    "name": engine.get_name(),
-                    "module": engine.get_module(),
-                    "module_version": engine.get_version(),
-                    "cmd": cmd,
+                    "id": engine_id,
+                    "name": engine_name,
+                    "module": engine_module,
+                    "module_version": engine_version,
+                    "base_cmd": cmd,
+                    "orchestrator_args": vars(args),
                     "info": info,
                 },
+                meta,
                 indent=2,
             )
+    except Exception as e:
+        print(
+            f"Warning: Could not write meta file {meta_file_path}: {e}", file=sys.stderr
         )
 
+    # --- Run the Processing ---
     try:
-        chunk_size = max(args.chunk_size, int(len(file_list) / (args.num_threads * 2)))
-        process_files_in_threads(
+        process_chunks_in_threads(
             file_list,
             thread_count=args.num_threads,
-            chunk_size=chunk_size,
+            chunk_size=args.chunk_size,
         )
     except KeyboardInterrupt:
-        # Make sure cursor is visible if user interrupts
-        sys.stdout.write("\r\033[?25h\n")
+        sys.stdout.write("\r\033[?25h\n")  # Ensure cursor is visible
         sys.stdout.flush()
-        print("Process interrupted by user")
+        print("\nProcess interrupted by user.")
+        # Note: Subprocesses might continue running briefly
         sys.exit(1)
     except Exception as e:
-        # Make sure cursor is visible on error
-        sys.stdout.write("\r\033[?25h\n")
+        sys.stdout.write("\r\033[?25h\n")  # Ensure cursor is visible
         sys.stdout.flush()
-        print(f"Error: {e}")
-        raise
+        print(f"\nAn unexpected error occurred in the orchestrator: {e}")
+        traceback.print_exc()
+        sys.exit(1)
+    # --- / Run the Processing ---
