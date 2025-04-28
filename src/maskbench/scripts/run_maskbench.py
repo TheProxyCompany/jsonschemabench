@@ -9,7 +9,7 @@ import json
 import time
 
 output_path = "tmp/output/"
-cmd = ["python3", "-m", "src.maskbench.src.runner", "--multi"]
+cmd = ["python3", "-m", "src.maskbench", "--multi"]
 log_lock = Lock()
 print_lock = Lock()
 
@@ -119,7 +119,7 @@ def process_files_in_threads(file_list: list[str], thread_count=40, chunk_size=1
     num_all_files = len(file_list)
     active_threads = 0
     active_lock = Lock()
-    
+
     # Use event for signaling progress monitor to stop
     stop_event = threading.Event()
 
@@ -175,21 +175,21 @@ def process_files_in_threads(file_list: list[str], thread_count=40, chunk_size=1
         finally:
             with active_lock:
                 active_threads -= 1
-    
+
     # Separate thread for continuously updating the progress display
     def progress_monitor():
         while not stop_event.is_set():
             with file_list_lock:
                 pending_count = len(file_list)
-            
+
             with active_lock:
                 current_active = active_threads
-                
+
             # Update progress every 0.2 seconds - fast enough to appear live without
             # consuming too many resources
             update_progress(num_processed, num_all_files, pending_count, t0, current_active)
             time.sleep(0.2)
-            
+
             # Check if processing is done
             if current_active == 0 and pending_count == 0:
                 break
@@ -201,7 +201,7 @@ def process_files_in_threads(file_list: list[str], thread_count=40, chunk_size=1
         thread.daemon = True
         threads.append(thread)
         thread.start()
-        
+
     # Start progress monitor thread
     monitor_thread = threading.Thread(target=progress_monitor)
     monitor_thread.daemon = True
@@ -211,7 +211,7 @@ def process_files_in_threads(file_list: list[str], thread_count=40, chunk_size=1
         # Wait for all worker threads to complete
         for thread in threads:
             thread.join()
-            
+
         # Signal the monitor to stop and wait for it
         stop_event.set()
         monitor_thread.join()
