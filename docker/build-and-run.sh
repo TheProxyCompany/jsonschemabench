@@ -36,9 +36,9 @@ echo "--- Docker user group check complete ---"
 echo "--- Checking SSH Agent status ---"
 if [ -z "$SSH_AUTH_SOCK" ]; then
     eval $(ssh-agent -s)
-    echo "SSH agent started. Please load your GitHub SSH key."
+    echo "SSH agent started. Please ensure your GitHub SSH key is loaded (e.g., using 'ssh-add ~/.ssh/your_key')."
 else
-    echo "SSH Agent active at $SSH_AUTH_SOCK"
+    echo "SSH Agent active at $SSH_AUTH_SOCK. Ensure the correct key for GitHub is loaded."
 fi
 echo "--- SSH Agent check complete ---"
 
