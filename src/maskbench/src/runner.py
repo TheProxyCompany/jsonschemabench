@@ -271,35 +271,14 @@ def main():
         files: list[str],
         timeout_duration: int,
     ):
-        tasks = [
-            asyncio.create_task(
-                process_file(engine, f), name=f"process_{os.path.basename(f)}"
-            )
-            for f in files
-        ]
         results = []
-        try:
-            async with asyncio.timeout(timeout_duration):
-                # Allow all tasks to run, collecting results/exceptions
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-            return results
-        except TimeoutError:
-            print(
-                f"Processing timed out after {timeout_duration}s. Cancelling pending tasks.",
-                file=sys.stderr,
-            )
-            cancelled_count = 0
-            for task in tasks:
-                if not task.done():
-                    task.cancel()
-                    cancelled_count += 1
-            print(f"Cancelled {cancelled_count} pending tasks.", file=sys.stderr)
-            final_results = await asyncio.gather(*tasks, return_exceptions=True)
-            print(
-                "Timeout occurred, returning potentially incomplete results.",
-                file=sys.stderr,
-            )
-            return final_results
+        for file in files:
+            print(f"Processing {file}...")
+            result = await process_file(engine, file)
+            if result is not None:
+                results.append(result)
+
+        return results
 
     results = asyncio.run(process_all_files(engine, files, time_limit_s))
 
