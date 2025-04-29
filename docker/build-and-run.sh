@@ -66,20 +66,8 @@ if [ -z "$SSH_AUTH_SOCK" ]; then
     # fi
 else
     echo "--- SSH Agent already active at $SSH_AUTH_SOCK."
-    # Optionally, check if the required key is already loaded
-    if ! ssh-add -l | grep -q "id_ed25519_github_maskbench"; then
-         echo "--- Required key ~/.ssh/id_ed25519_github_maskbench not found in agent. Attempting to add..."
-         if ssh-add ~/.ssh/id_ed25519_github_maskbench; then
-             echo "--- Key ~/.ssh/id_ed25519_github_maskbench added successfully."
-             SSH_ENABLED=true
-         else
-             echo "!!! WARNING: Failed to add SSH key ~/.ssh/id_ed25519_github_maskbench to existing agent. !!!"
-             SSH_ENABLED=false
-         fi
-    else
-        echo "--- Required key found in agent."
-        SSH_ENABLED=true
-    fi
+    ssh-add
+    SSH_ENABLED=true
 fi
 echo "--- SSH Agent check complete (Enabled: $SSH_ENABLED)"
 
