@@ -51,23 +51,33 @@ if [ -z "$SSH_AUTH_SOCK" ]; then
     echo "--- Starting ssh-agent"
     eval $(ssh-agent -s)
     echo "--- ssh-agent started. Attempting to add key..."
-    ssh-add
-    SSH_ENABLED=true
-    # # Explicitly add the key required for GitHub access
-    # if ssh-add ~/.ssh/id_ed25519_github_maskbench; then
-    #     echo "--- Key ~/.ssh/id_ed25519_github_maskbench added successfully."
-    #     SSH_ENABLED=true
-    # else
-    #     echo "!!! WARNING: Failed to add SSH key ~/.ssh/id_ed25519_github_maskbench. Git operations requiring SSH may fail. !!!"
-    #     echo "Please ensure the key exists and has the correct permissions."
-    #     # Optionally, you could exit here if the key is absolutely critical:
-    #     # exit 1
-    #     SSH_ENABLED=false # Mark SSH as not fully enabled if key addition fails
-    # fi
+    # Explicitly add the key required for GitHub access
+    if ssh-add ~/.ssh/id_ed25519_github_maskbench; then
+        echo "--- Key ~/.ssh/id_ed25519_github_maskbench added successfully."
+        SSH_ENABLED=true
+    else
+        echo "!!! WARNING: Failed to add SSH key ~/.ssh/id_ed25519_github_maskbench. Git operations requiring SSH may fail. !!!"
+        echo "Please ensure the key exists and has the correct permissions."
+        # Optionally, you could exit here if the key is absolutely critical:
+        # exit 1
+        SSH_ENABLED=false # Mark SSH as not fully enabled if key addition fails
+    fi
 else
     echo "--- SSH Agent already active at $SSH_AUTH_SOCK."
-    ssh-add
-    SSH_ENABLED=true
+    # Optionally, check if the required key is already loaded
+    if ! ssh-add -l | grep -q "id_ed25519_github_maskbench"; then
+         echo "--- Required key ~/.ssh/id_ed25519_github_maskbench not found in agent. Attempting to add..."
+         if ssh-add ~/.ssh/id_ed25519_github_maskbench; then
+             echo "--- Key ~/.ssh/id_ed25519_github_maskbench added successfully."
+             SSH_ENABLED=true
+         else
+             echo "!!! WARNING: Failed to add SSH key ~/.ssh/id_ed25519_github_maskbench to existing agent. !!!"
+             SSH_ENABLED=false
+         fi
+    else
+        echo "--- Required key found in agent."
+        SSH_ENABLED=true
+    fi
 fi
 echo "--- SSH Agent check complete (Enabled: $SSH_ENABLED)"
 
