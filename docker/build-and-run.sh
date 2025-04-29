@@ -167,18 +167,6 @@ mkdir -p "tmp/$BENCHMARK_DIR"
 mkdir -p "tmp/$BENCHMARK_DIR/plots"
 chmod -R 777 "tmp/$BENCHMARK_DIR"
 
-echo "--- Running benchmark with PSE engine ---"
-docker run -it --rm \
-   -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
-   -v "$PWD/tmp:/app/tmp" \
-   maskbench-env:private-latest \
-   python -m src.maskbench.scripts.run_maskbench \
-     --num-threads "$THREADS" \
-     --chunk-size "$CHUNK_SIZE" \
-     --output "tmp/$BENCHMARK_DIR/pse-results" \
-     --pse $FILES_TO_PROCESS
-echo "--- PSE engine benchmark completed ---"
-
 echo "--- Running benchmark with LLG engine ---"
 docker run -it --rm \
    -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
@@ -190,6 +178,18 @@ docker run -it --rm \
      --output "tmp/$BENCHMARK_DIR/llg-results" \
      --llg $FILES_TO_PROCESS
 echo "--- LLG engine benchmark completed ---"
+
+echo "--- Running benchmark with PSE engine ---"
+docker run -it --rm \
+   -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
+   -v "$PWD/tmp:/app/tmp" \
+   maskbench-env:private-latest \
+   python -m src.maskbench.scripts.run_maskbench \
+     --num-threads "$THREADS" \
+     --chunk-size "$CHUNK_SIZE" \
+     --output "tmp/$BENCHMARK_DIR/pse-results" \
+     --pse $FILES_TO_PROCESS
+echo "--- PSE engine benchmark completed ---"
 
 echo "--- Running benchmark with XGR engine ---"
 docker run -it --rm \
