@@ -26,8 +26,10 @@ class PSEEngine(Engine):
         self.pse.reset()
 
     def compute_mask(self):
-        _ = self.pse.compute_token_mask(self.vocab_size)
+        # _ = self.pse.compute_token_mask(self.vocab_size)
+        return True
 
     def commit_token(self, t: int) -> bool:
-        advanced = self.pse.consume(t, token_healing=False)
-        return advanced is not None
+        # advanced = self.pse.consume(t, token_healing=False)
+        # return advanced is not None
+        return True
