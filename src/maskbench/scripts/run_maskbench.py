@@ -160,15 +160,11 @@ def process_chunks_in_threads(file_list: list[str], thread_count: int, chunk_siz
 
     futures = {executor.submit(run_cmd, chunk, time_limit) for chunk in chunks}
 
-    for i, future in enumerate(as_completed(futures)):
-        try:
-            result = future.result()
-            with progress_lock:
-                num_processed_files += result
-        except Exception as e:
-            print(f"\n{e}")
-            break
-        finally:
+    for future in as_completed(futures):
+        result = future.result()
+        with progress_lock:
+            num_processed_files += result
+
             if num_processed_files > 0:
                 update_progress(num_processed_files, num_all_files, 0, t0, 0)
 

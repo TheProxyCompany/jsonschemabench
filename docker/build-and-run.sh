@@ -191,18 +191,6 @@ mkdir -p "tmp/$BENCHMARK_DIR"
 mkdir -p "tmp/$BENCHMARK_DIR/plots"
 chmod -R 777 "tmp/$BENCHMARK_DIR"
 
-echo "--- Running benchmark with LLG engine ---"
-docker run -it --rm \
-   -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
-   -v "$PWD/tmp:/app/tmp" \
-   maskbench-env:private-latest \
-   python -m src.maskbench.scripts.run_maskbench \
-     --num-threads "$THREADS" \
-     --chunk-size "$CHUNK_SIZE" \
-     --output "tmp/$BENCHMARK_DIR/llg-results" \
-     --llg $FILES_TO_PROCESS
-echo "--- LLG engine benchmark completed ---"
-
 echo "--- Running benchmark with PSE engine ---"
 docker run -it --rm \
    -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
@@ -214,6 +202,18 @@ docker run -it --rm \
      --output "tmp/$BENCHMARK_DIR/pse-results" \
      --pse $FILES_TO_PROCESS
 echo "--- PSE engine benchmark completed ---"
+
+echo "--- Running benchmark with LLG engine ---"
+docker run -it --rm \
+   -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
+   -v "$PWD/tmp:/app/tmp" \
+   maskbench-env:private-latest \
+   python -m src.maskbench.scripts.run_maskbench \
+     --num-threads "$THREADS" \
+     --chunk-size "$CHUNK_SIZE" \
+     --output "tmp/$BENCHMARK_DIR/llg-results" \
+     --llg $FILES_TO_PROCESS
+echo "--- LLG engine benchmark completed ---"
 
 echo "--- Running benchmark with XGR engine ---"
 docker run -it --rm \
@@ -227,17 +227,17 @@ docker run -it --rm \
      --xgr $FILES_TO_PROCESS
 echo "--- XGR engine benchmark completed ---"
 
-echo "--- Running benchmark with XGR-CPP engine ---"
-docker run -it --rm \
-   -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
-   -v "$PWD/tmp:/app/tmp" \
-   maskbench-env:private-latest \
-   python -m src.maskbench.scripts.run_maskbench \
-     --num-threads "$THREADS" \
-     --chunk-size "$CHUNK_SIZE" \
-     --output "tmp/$BENCHMARK_DIR/xgr-cpp-results" \
-     --xgr-cpp $FILES_TO_PROCESS
-echo "--- XGR-CPP engine benchmark completed ---"
+# echo "--- Running benchmark with XGR-CPP engine ---"
+# docker run -it --rm \
+#    -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
+#    -v "$PWD/tmp:/app/tmp" \
+#    maskbench-env:private-latest \
+#    python -m src.maskbench.scripts.run_maskbench \
+#      --num-threads "$THREADS" \
+#      --chunk-size "$CHUNK_SIZE" \
+#      --output "tmp/$BENCHMARK_DIR/xgr-cpp-results" \
+#      --xgr-cpp $FILES_TO_PROCESS
+# echo "--- XGR-CPP engine benchmark completed ---"
 
 echo "--- Running benchmark with Outlines engine ---"
 docker run -it --rm \
@@ -251,17 +251,17 @@ docker run -it --rm \
      --outlines $FILES_TO_PROCESS
 echo "--- Outlines engine benchmark completed ---"
 
-echo "--- Running benchmark with LlamaCPP engine ---"
-docker run -it --rm \
-   -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
-   -v "$PWD/tmp:/app/tmp" \
-   maskbench-env:private-latest \
-   python -m src.maskbench.scripts.run_maskbench \
-     --num-threads "$THREADS" \
-     --chunk-size "$CHUNK_SIZE" \
-     --output "tmp/$BENCHMARK_DIR/llamacpp-results" \
-     --llamacpp $FILES_TO_PROCESS
-echo "--- LlamaCPP engine benchmark completed ---"
+# echo "--- Running benchmark with LlamaCPP engine ---"
+# docker run -it --rm \
+#    -v "$HOST_DATA_PATH:$CONTAINER_DATA_PATH" \
+#    -v "$PWD/tmp:/app/tmp" \
+#    maskbench-env:private-latest \
+#    python -m src.maskbench.scripts.run_maskbench \
+#      --num-threads "$THREADS" \
+#      --chunk-size "$CHUNK_SIZE" \
+#      --output "tmp/$BENCHMARK_DIR/llamacpp-results" \
+#      --llamacpp $FILES_TO_PROCESS
+# echo "--- LlamaCPP engine benchmark completed ---"
 
 echo "--- Generating comparison charts and results ---"
 # Generate comparison results with matplotlib backend that works in Docker

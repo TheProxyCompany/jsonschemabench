@@ -34,8 +34,6 @@ async def process_file(engine: Engine, file: str):
         except FileExistsError:
             return None
 
-    print(file, file=sys.stderr)
-
     async with aiofiles.open(file) as f:
         pos_data = json.loads(await f.read())
 
@@ -84,10 +82,6 @@ async def process_file(engine: Engine, file: str):
                 engine.compute_mask()
                 ok = engine.commit_token(t)
                 mask_time = time_us(t2)
-                if engine.debug:
-                    engine.log_single(
-                        f"Token {tidx} {repr(engine.tokenizer.decode([t]))}: {ok}"
-                    )
                 num_tokens += 1
                 masks_us += mask_time
                 all_mask_us.append(mask_time)

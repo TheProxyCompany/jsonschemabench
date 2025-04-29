@@ -28,8 +28,8 @@ def _build_repetition(item_rule, min_items, max_items, separator_rule=None):
     return f'({result})?' if min_items == 0 else result
 
 def _generate_min_max_int(min_value: Optional[int], max_value: Optional[int], out: list, decimals_left: int = 16, top_level: bool = True):
-    has_min = min_value != None
-    has_max = max_value != None
+    has_min = min_value is not None
+    has_max = max_value is not None
 
     def digit_range(from_char: str, to_char: str):
         out.append("[")
@@ -310,7 +310,7 @@ class SchemaConverter:
                     out.append(' | ')
                 out.append(f'[{c}]')
                 if child.children:
-                    out.append(f' (')
+                    out.append(' (')
                     visit(child)
                     out.append(')')
                 elif child.is_end_of_string:
@@ -432,7 +432,7 @@ class SchemaConverter:
                 else:
                     # Accept any character... except \n and \r line break chars (\x0A and \xOD)
                     rule = DOT
-                return self._add_rule(f'dot', rule)
+                return self._add_rule('dot', rule)
 
             def join_seq():
                 nonlocal seq
@@ -695,7 +695,7 @@ class SchemaConverter:
         required_props = [k for k in sorted_props if k in required]
         optional_props = [k for k in sorted_props if k not in required]
 
-        if additional_properties is not None and additional_properties != False:
+        if additional_properties is not None and additional_properties is not False:
             sub_name = f'{name}{"-" if name else ""}additional'
             value_rule = self.visit(additional_properties, f'{sub_name}-value') if isinstance(additional_properties, dict) else \
                 self._add_primitive('value', PRIMITIVE_RULES['value'])
@@ -806,7 +806,6 @@ def main(args_in = None):
         raw_pattern=args.raw_pattern)
     schema = converter.resolve_refs(schema, url)
     converter.visit(schema, '')
-    print(converter.format_grammar())
 
 
 if __name__ == '__main__':

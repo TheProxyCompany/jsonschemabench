@@ -57,7 +57,6 @@ class XgrEngine(Engine):
             self.compiled_grammar = self.xgr_compiler.compile_json_schema(
                 schema_s, any_whitespace=xgr_any_whitespace, strict_mode=xgr_strict
             )
-        # print(compiled_grammar.grammar, file=sys.stderr)
 
     def reset(self):
         self.matcher = xgr.GrammarMatcher(self.compiled_grammar)
