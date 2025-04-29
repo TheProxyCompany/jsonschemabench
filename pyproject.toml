@@ -26,5 +26,6 @@ dependencies = [
     "tokenizers",
     "tqdm",
     "dacite",
-    "google-generativeai"
+    "google-generativeai",
+    "aiofiles"
 ]

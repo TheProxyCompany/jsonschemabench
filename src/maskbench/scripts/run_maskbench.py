@@ -15,14 +15,15 @@ cmd = ["python3", "-m", "src.maskbench", "--multi"]  # Base command
 log_lock = Lock()
 print_lock = Lock()
 
-def run_cmd(file_list_chunk: list[str]) -> int:
+
+def run_cmd(file_list_chunk: list[str], time_limit: int) -> int:
     if not file_list_chunk:
         return 0
 
     command = cmd + file_list_chunk
     processed_count_in_chunk = 0
     try:
-        chunk_timeout_s = args.time_limit * len(file_list_chunk) + 60
+        chunk_timeout_s = time_limit * len(file_list_chunk) + 60
         subprocess.run(
             command,
             stdout=subprocess.PIPE,
@@ -47,6 +48,7 @@ def run_cmd(file_list_chunk: list[str]) -> int:
 
     return processed_count_in_chunk
 
+
 def get_files(file_paths: list[str]) -> list[str]:
     # (Keep your existing get_files logic)
     file_list = []
@@ -57,6 +59,7 @@ def get_files(file_paths: list[str]) -> list[str]:
             json_files = glob.glob(os.path.join(path, "**/*.json"), recursive=True)
             file_list.extend(json_files)
     return list(set(file_list))
+
 
 def update_progress(
     num_processed: int,
@@ -105,7 +108,7 @@ def update_progress(
 
 
 # --- /End standard functions ---
-def process_chunks_in_threads(file_list: list[str], thread_count: int, chunk_size: int):
+def process_chunks_in_threads(file_list: list[str], thread_count: int, chunk_size: int, time_limit: int):
     """
     Processes files in chunks using a ThreadPoolExecutor, where each thread
     runs a subprocess for one chunk.
@@ -143,11 +146,7 @@ def process_chunks_in_threads(file_list: list[str], thread_count: int, chunk_siz
                 pending_count = num_all_files - num_processed_files
 
             update_progress(
-                num_processed_files,
-                num_all_files,
-                pending_count,
-                t0,
-                thread_count
+                num_processed_files, num_all_files, pending_count, t0, thread_count
             )
             time.sleep(0.2)
 
@@ -157,8 +156,9 @@ def process_chunks_in_threads(file_list: list[str], thread_count: int, chunk_siz
     thread = Thread(target=progress_monitor)
     thread.start()
 
-    executor = ThreadPoolExecutor(max_workers=thread_count)
-    futures = {executor.submit(run_cmd, chunk): chunk for chunk in chunks}
+    executor = ThreadPoolExecutor(max_workers=thread_count - 1)
+
+    futures = {executor.submit(run_cmd, chunk, time_limit) for chunk in chunks}
 
     for i, future in enumerate(as_completed(futures)):
         try:
@@ -169,18 +169,18 @@ def process_chunks_in_threads(file_list: list[str], thread_count: int, chunk_siz
             print(f"\n{e}")
             break
         finally:
-            stop_event.set()
-            thread.join()
             if num_processed_files > 0:
                 update_progress(num_processed_files, num_all_files, 0, t0, 0)
 
+    stop_event.set()
+    thread.join()
     # Final newline after progress bar and restore cursor visibility
     sys.stdout.write("\r\033[?25h\n")
     sys.stdout.flush()
 
 
 # --- Main Execution ---
-if __name__ == "__main__":
+def main():
     from src.maskbench.src.runner import setup_argparse, get_output, get_engine
 
     parser = setup_argparse()
@@ -248,6 +248,7 @@ if __name__ == "__main__":
             file_list,
             thread_count=args.num_threads,
             chunk_size=args.chunk_size,
+            time_limit=args.time_limit,
         )
     except KeyboardInterrupt:
         sys.stdout.write("\r\033[?25h\n")  # Ensure cursor is visible
@@ -262,3 +263,14 @@ if __name__ == "__main__":
         traceback.print_exc()
         sys.exit(1)
     # --- / Run the Processing ---
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(1)
+    except Exception as e:
+        print(f"{e}")
+        traceback.print_exc()
+        sys.exit(1)

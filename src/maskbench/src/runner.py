@@ -7,8 +7,10 @@ import random
 import time
 import resource
 import argparse
-import signal
 import traceback
+import asyncio
+import aiofiles
+import aiofiles.os
 
 from src.maskbench.src.engine import Engine
 from transformers.models.auto.tokenization_auto import AutoTokenizer
@@ -18,24 +20,24 @@ def time_us(prev: float) -> int:
     return int((time.monotonic() - prev) * 1000000)
 
 
-def process_file(engine: Engine, file: str):
+async def process_file(engine: Engine, file: str):
     id = os.path.basename(file)
     output_name = os.path.join(output_path, id)
 
     if engine.multi:
-        if os.path.exists(output_name):
+        if await aiofiles.os.path.exists(output_name):
             return None
 
         try:
-            with open(output_name, "x") as f:
-                f.write(json.dumps({"pending_file": 1}, indent=2))
+            async with aiofiles.open(output_name, "x") as f:
+                await f.write(json.dumps({"pending_file": 1}, indent=2))
         except FileExistsError:
             return None
 
     print(file, file=sys.stderr)
 
-    with open(file) as f:
-        pos_data = json.loads(f.read())
+    async with aiofiles.open(file) as f:
+        pos_data = json.loads(await f.read())
 
     all_mask_us = []
     status = {
@@ -58,8 +60,8 @@ def process_file(engine: Engine, file: str):
         if not engine.multi:
             traceback.print_exc()
         status["compile_error"] = repr(e)
-        with open(output_name, "w") as f:
-            f.write(json.dumps(status, indent=2))
+        async with aiofiles.open(output_name, "w") as f:
+            await f.write(json.dumps(status, indent=2))
         return status
 
     status["ttfm_us"] = time_us(t0)
@@ -117,15 +119,17 @@ def process_file(engine: Engine, file: str):
 
     st = json.dumps(status, indent=2)
     engine.log_single(st)
-    with open(output_name, "w") as f:
-        f.write(st)
+    async with aiofiles.open(output_name, "w") as f:
+        await f.write(st)
 
     return status
 
 
 def setup_argparse():
     parser = argparse.ArgumentParser(description="Run mask computation.")
-    parser.add_argument("--pse", action="store_true", help="Enable Proxy Structuring Engine")
+    parser.add_argument(
+        "--pse", action="store_true", help="Enable Proxy Structuring Engine"
+    )
     parser.add_argument("--xgr", action="store_true", help="Enable XGrammar")
     parser.add_argument(
         "--xgr-cpp",
@@ -159,11 +163,19 @@ def setup_argparse():
 
     defl_cpu = min(os.cpu_count() or 1, 40)
     parser.add_argument(
-        "--num-threads", "-t", type=int, default=defl_cpu, help="Number of threads to run"
+        "--num-threads",
+        "-t",
+        type=int,
+        default=defl_cpu,
+        help="Number of threads to run",
     )
 
     parser.add_argument(
-        "--chunk-size", "-c", type=int, default=100, help="Number of files to process per batch (for orchestrator)"
+        "--chunk-size",
+        "-c",
+        type=int,
+        default=100,
+        help="Number of files to process per batch (for orchestrator)",
     )
 
     parser.add_argument(
@@ -231,6 +243,7 @@ def get_output(args):
         id = get_engine(args).get_id()
         return f"tmp/out--{id}"
 
+
 def main():
     global output_path
 
@@ -248,8 +261,7 @@ def main():
     output_path = get_output(args)
 
     engine.tokenizer = AutoTokenizer.from_pretrained(
-        engine.tokenizer_model_id,
-        trust_remote_code=True
+        engine.tokenizer_model_id, trust_remote_code=True
     )
 
     engine.init()
@@ -260,10 +272,78 @@ def main():
 
     os.makedirs(output_path, exist_ok=True)
 
-    for f in files:
-        signal.alarm(time_limit_s)
-        process_file(engine, f)
-        signal.alarm(0)
+    async def process_all_files(
+        engine: Engine,
+        files: list[str],
+        timeout_duration: int,
+    ):
+        tasks = [
+            asyncio.create_task(
+                process_file(engine, f), name=f"process_{os.path.basename(f)}"
+            )
+            for f in files
+        ]
+        results = []
+        try:
+            async with asyncio.timeout(timeout_duration):
+                # Allow all tasks to run, collecting results/exceptions
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+            return results
+        except TimeoutError:
+            print(
+                f"Processing timed out after {timeout_duration}s. Cancelling pending tasks.",
+                file=sys.stderr,
+            )
+            cancelled_count = 0
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+                    cancelled_count += 1
+            print(f"Cancelled {cancelled_count} pending tasks.", file=sys.stderr)
+            final_results = await asyncio.gather(*tasks, return_exceptions=True)
+            print(
+                "Timeout occurred, returning potentially incomplete results.",
+                file=sys.stderr,
+            )
+            return final_results
+
+    results = asyncio.run(process_all_files(engine, files, time_limit_s))
+
+    successful_runs = 0
+    failed_runs = 0
+    skipped_runs = 0
+
+    if results:
+        print(
+            f"\n--- Processing Summary ({len(results)} total tasks) ---",
+            file=sys.stderr,
+        )
+        for i, res in enumerate(results):
+            if isinstance(res, asyncio.CancelledError):
+                failed_runs += 1
+                print(f"Result {i}: Task cancelled (timeout).", file=sys.stderr)
+            elif isinstance(res, Exception):
+                failed_runs += 1
+                print(
+                    f"Result {i}: Task failed: {type(res).__name__}: {res}",
+                    file=sys.stderr,
+                )
+            elif res is None:
+                skipped_runs += 1
+            elif isinstance(res, dict):
+                successful_runs += 1
+            else:
+                failed_runs += 1
+                print(
+                    f"Result {i}: Unexpected result type: {type(res).__name__}",
+                    file=sys.stderr,
+                )
+        print(
+            f"--- Summary: {successful_runs} succeeded, {failed_runs} failed, {skipped_runs} skipped ---",
+            file=sys.stderr,
+        )
+    else:
+        print("Processing yielded no results list or was empty.", file=sys.stderr)
 
 
 if __name__ == "__main__":
