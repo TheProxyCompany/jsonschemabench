@@ -252,6 +252,7 @@ def main():
     time_limit_s = args.time_limit
 
     engine = get_engine(args)
+    engine.multi = args.multi
     output_path = get_output(args)
 
     engine.tokenizer = AutoTokenizer.from_pretrained(
