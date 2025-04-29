@@ -269,7 +269,6 @@ def main():
     async def process_all_files(
         engine: Engine,
         files: list[str],
-        timeout_duration: int,
     ):
         results = []
         for file in files:
@@ -280,7 +279,7 @@ def main():
 
         return results
 
-    results = asyncio.run(process_all_files(engine, files, time_limit_s))
+    results = asyncio.run(process_all_files(engine, files))
 
     successful_runs = 0
     failed_runs = 0

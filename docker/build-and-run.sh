@@ -44,42 +44,65 @@ if ! [[ "$(uname)" == "Darwin" ]]; then
     fi
 fi
 
-# Check SSH Agent availability
+# --- Configure SSH Agent for potential private repo access ---
 SSH_ENABLED=false
+PREFERRED_KEY_NAME="id_ed25519_github_maskbench"
+DEFAULT_KEY_NAME="id_rsa"
+PREFERRED_KEY_PATH="$HOME/.ssh/$PREFERRED_KEY_NAME"
+DEFAULT_KEY_PATH="$HOME/.ssh/$DEFAULT_KEY_NAME"
+KEY_TO_ADD_PATH=""
+KEY_USED_NAME=""
 
-if [ -z "$SSH_AUTH_SOCK" ]; then
-    echo "--- Starting ssh-agent"
-    eval $(ssh-agent -s)
-    echo "--- ssh-agent started. Attempting to add key..."
-    # Explicitly add the key required for GitHub access
-    if ssh-add ~/.ssh/id_ed25519_github_maskbench; then
-        echo "--- Key ~/.ssh/id_ed25519_github_maskbench added successfully."
-        SSH_ENABLED=true
-    else
-        echo "!!! WARNING: Failed to add SSH key ~/.ssh/id_ed25519_github_maskbench. Git operations requiring SSH may fail. !!!"
-        echo "Please ensure the key exists and has the correct permissions."
-        # Optionally, you could exit here if the key is absolutely critical:
-        # exit 1
-        SSH_ENABLED=false # Mark SSH as not fully enabled if key addition fails
-    fi
+# Determine which extant key to prioritize for adding
+if [ -f "$PREFERRED_KEY_PATH" ]; then
+    KEY_TO_ADD_PATH="$PREFERRED_KEY_PATH"
+    KEY_USED_NAME="$PREFERRED_KEY_NAME"
+    echo "--- Identified preferred SSH key: $KEY_TO_ADD_PATH"
+elif [ -f "$DEFAULT_KEY_PATH" ]; then
+    KEY_TO_ADD_PATH="$DEFAULT_KEY_PATH"
+    KEY_USED_NAME="$DEFAULT_KEY_NAME"
+    echo "--- Identified default SSH key: $KEY_TO_ADD_PATH"
 else
-    echo "--- SSH Agent already active at $SSH_AUTH_SOCK."
-    # Optionally, check if the required key is already loaded
-    if ! ssh-add -l | grep -q "id_ed25519_github_maskbench"; then
-         echo "--- Required key ~/.ssh/id_ed25519_github_maskbench not found in agent. Attempting to add..."
-         if ssh-add ~/.ssh/id_ed25519_github_maskbench; then
-             echo "--- Key ~/.ssh/id_ed25519_github_maskbench added successfully."
-             SSH_ENABLED=true
-         else
-             echo "!!! WARNING: Failed to add SSH key ~/.ssh/id_ed25519_github_maskbench to existing agent. !!!"
-             SSH_ENABLED=false
-         fi
-    else
-        echo "--- Required key found in agent."
-        SSH_ENABLED=true
-    fi
+    echo "--- Neither preferred ($PREFERRED_KEY_NAME) nor default ($DEFAULT_KEY_NAME) SSH key found in ~/.ssh/"
 fi
-echo "--- SSH Agent check complete (Enabled: $SSH_ENABLED)"
+
+# Ensure ssh-agent is operational
+if [ -z "$SSH_AUTH_SOCK" ]; then
+    echo "--- Initiating ssh-agent..."
+    eval "$(ssh-agent -s)"
+fi
+
+# Attempt to add the identified key, or ascertain if keys are already loaded
+if [ -n "$KEY_TO_ADD_PATH" ]; then
+    echo "--- Attempting to add key: $KEY_TO_ADD_PATH"
+    # Use `ssh-add -l` first to avoid redundant add attempts or passphrase prompts if already loaded.
+    # Grep for the specific key path or a comment containing the key name.
+    if ssh-add -l | grep -q -e "$KEY_TO_ADD_PATH" -e "$KEY_USED_NAME"; then
+        echo "--- Key '$KEY_USED_NAME' is already loaded in the agent."
+        SSH_ENABLED=true
+    elif ssh-add "$KEY_TO_ADD_PATH"; then
+        echo "--- Key '$KEY_USED_NAME' added successfully."
+        SSH_ENABLED=true
+    else
+        echo "!!! WARNING: Failed to add SSH key '$KEY_USED_NAME'. It might be password-protected."
+        # Even if adding the specific key failed, check if *any* keys are loaded.
+        if ssh-add -l > /dev/null 2>&1; then
+             echo "--- Agent possesses other keys. Proceeding with SSH enabled."
+             SSH_ENABLED=true
+        else
+             echo "--- Agent contains no keys. Proceeding with SSH disabled."
+        fi
+    fi
+elif ssh-add -l > /dev/null 2>&1; then
+    # No specific key file found to add, but agent already has keys loaded.
+    echo "--- SSH agent is running and holds keys. Proceeding with SSH enabled."
+    SSH_ENABLED=true
+else
+    # No key file found and agent has no keys.
+    echo "--- WARNING: No suitable SSH key found and agent holds no keys. Proceeding with SSH disabled."
+fi
+
+echo "--- SSH Agent configuration complete (Enabled: $SSH_ENABLED)"
 
 # --- Build the Docker image ---
 echo "--- Building Docker image"
